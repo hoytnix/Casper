@@ -87,12 +87,14 @@ export async function POST(req: NextRequest) {
       improvementPrompt,
       customApiKey,
       githubPat,
-      maxRounds = 3,
+      maxRounds: rawMaxRounds = 3,
       repositoryContext, // For fallback legacy full mode
       investigatedFiles: clientInvestigatedFiles, // Pre-routed files from client
       models: customModels,
       requestTimeout = 60,
     } = body;
+
+    const maxRounds = Math.min(Math.max(1, Number(rawMaxRounds) || 3), 4);
 
     const timeoutMs = Math.max(15000, Number(requestTimeout) * 1000);
 
@@ -195,12 +197,12 @@ INSTRUCTIONS FOR AGENTIC EXPLORATION:
               let activeModel = '';
               let activePass = 1;
 
-              for (let round = 1; round <= Math.min(maxRounds, 4); round++) {
+              for (let round = 1; round <= maxRounds; round++) {
                 sendEvent({
                   type: 'agent_round',
                   round,
                   maxRounds,
-                  message: `Round ${round}: Agent reasoning over repository blast radius...`,
+                  message: `Round ${round} of ${maxRounds}: Agent reasoning over repository blast radius...`,
                 });
 
                 let exploreResult: unknown = null;

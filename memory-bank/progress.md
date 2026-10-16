@@ -16,13 +16,11 @@
 - [x] Drop-Dead Gorgeous Visual Design & Anti-Slop Elevation
 - [x] Configurable Request & Stream Timeout Setting
 - [x] Input Context Tokens & Metric Separation
-- [x] **AST-Aware Incremental Repo Caching & Delta Ingestion**:
-  - Implemented `fetchRepoDelta` in `/lib/github.ts` comparing commit ranges via GitHub API.
-  - Built pure delta merge logic (`/lib/delta-sync.ts`) and verified with Node 22 native tests (`/lib/delta-sync.test.ts`).
-  - Added IndexedDB snapshot persistence (`/lib/snapshot-db.ts`) for caching full VFS source files and commit SHAs beyond `localStorage` quotas.
-  - Updated `/hooks/useRepoStore.ts` to hydrate snapshots on mount and synchronize commit SHAs.
-  - Integrated automated delta verification on repo open and branch selection in `/components/RepoWorkspace.tsx`, downloading only modified or added blobs and bypassing downloads entirely on identical commit SHAs.
-  - Added real-time `Delta Cache` status indicator pill to the workspace header.
+- [x] AST-Aware Incremental Repo Caching & Delta Ingestion
+- [x] **Configurable Max Agentic Rounds & Sequential Exploration Fix**:
+  - Updated `/app/api/compile/route.ts` to parse, bound, and execute up to configured `maxRounds` (1-4).
+  - Updated `/components/RepoWorkspace.tsx` to pass `maxRounds: settings.maxAgenticRounds || 3` into initial progress state and `/api/compile` fetch payload.
+  - Verified dynamic round counter rendering in `/components/StepLoader.tsx`.
 
 ## Current Status
-Production-Ready. AST-Aware Incremental Repo Caching & Delta Ingestion is fully operational and persistent across browser sessions with verified unit tests, clean builds, and zero lint errors.
+Production-Ready. Configurable max agentic rounds and sequential exploration loops are fully operational, tested, and verified with clean builds and zero lint errors.

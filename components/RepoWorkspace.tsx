@@ -348,7 +348,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           step: 'agentic_exploring',
           message: 'Running local in-browser context router (Gemini Nano / Arctic-Embed-XS)...',
           currentRound: 1,
-          maxRounds: 1,
+          maxRounds: settings.maxAgenticRounds || 3,
           explorationTrail: [],
         });
 
@@ -486,6 +486,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             githubPat: settings.githubPat,
             routerEngine: routerEngineUsed,
             models: settings.models,
+            maxRounds: settings.maxAgenticRounds || 3,
             requestTimeout: settings.requestTimeout || 60,
           }),
         });
