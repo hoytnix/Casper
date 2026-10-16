@@ -1,38 +1,37 @@
-# Active Context: Gemini 4 Argon Support & Customizable Model Fallback Waterfall
+# Active Context: Drop-Dead Gorgeous Design Overhaul & Anti-Slop Discipline
 
 ## Active Focus
-Implemented support for the new **Gemini 4 Argon** model across the API route handler, settings modal, and model configuration pipeline. Users can now reorder model priorities and granularly toggle individual models on/off, customizing their cascading fallback waterfall.
+Executed a comprehensive frontend design elevation transforming Next.js Expert into an exquisite, production-grade developer platform adhering to the Universal Frontend Design Constitution and SaaS/Dashboard design guidelines.
 
 ## Implementation Details
-1. **TypeScript Definitions (`types/index.ts`)**:
-   - Added `ModelConfig` interface (`id`, `name`, `tag`, `description`, `enabled`, `priority`, `inputPricing`, `outputPricing`).
-   - Extended `AppSettings` to include `models?: ModelConfig[]`.
+1. **Typography & Font System (`app/layout.tsx`, `app/globals.css`)**:
+   - Integrated `next/font/google` with `Plus Jakarta Sans` for crisp display/body hierarchy and `JetBrains Mono` with `tabular-nums` for code, commit SHAs, file sizes, and token metrics.
+   - Replaced default typography with refined optical compensation and clean letter spacing.
 
-2. **Model Pricing & Cost Calculator (`lib/utils.ts`)**:
-   - Added `gemini-4-argon` to `MODEL_PRICING_TIERS`:
-     - Pricing: $2/M input, $10/M output ($4/M & $20/M after Nov 30, 2026).
-     - Automated date boundary detection (`2026-11-30T23:59:59Z`).
-   - Updated `resolveModelPricing` to resolve `argon` / `gemini-4` / `gemini-4-argon` variants.
+2. **Top Bar Contract (`components/Header.tsx`)**:
+   - Refactored header into the strict 1-row, 3-zone contract:
+     - **Zone 1 (Brand/Context)**: Single-line wordmark `Next.js Expert` on grid; contextual breadcrumb `Repositories / {owner} / {repo}` in workspace view.
+     - **Zone 2 (Navigation)**: Single-line architecture capabilities (`App Router Cartography · Server Component Graph · In-Memory Unix VFS · Gemini 4 Argon`).
+     - **Zone 3 (Actions)**: Clean Settings button (removed pulsing amber dot) and responsive Add Repo button.
 
-3. **Compiler Route Handler (`app/api/compile/route.ts`)**:
-   - Updated `DEFAULT_CASCADING_MODELS` to include `gemini-4-argon` as the primary tier.
-   - Dynamically parses, filters enabled models, and sorts by user-defined priority (`models` / `customModels`) from client request payload.
-   - Cascades through enabled user models during agentic exploration and prompt synthesis loops.
+3. **2-Column Split Hero with Cartography Monolith (`components/RepoGrid.tsx`)**:
+   - Crafted a balanced 2-column hero split with 1-line quiet kicker (`Next.js Full-Stack Architecture Cartography`), text-balanced headline, and unboxed metadata strip with `·` separators.
+   - Built a bespoke Next.js Cartography Engine Monolith schematic showing App Router root layout (RSC), Server Actions, Route Handlers, and Client Leaf Nodes.
+   - Added keyboard shortcut `/` search trigger and high-intent button styling.
 
-4. **Settings Store Initializer (`hooks/useRepoStore.ts`)**:
-   - Added `DEFAULT_MODELS` with Gemini 4 Argon, Gemini 3.6 Flash, Gemini 3.5 Flash, Gemini 3.8 Flash, and Gemini 3.5 Flash-Lite.
-   - Updated `DEFAULT_SETTINGS` with `preferredModel: 'gemini-4-argon'` and default model list.
-   - Added storage migration logic ensuring existing user sessions in `localStorage` automatically receive `gemini-4-argon`.
+4. **Zero-Pill Discipline & Card Polish (`components/RepoCard.tsx`)**:
+   - Removed pill enclosures and mechanical `>_` terminal prefixes.
+   - Converted metadata to clean unboxed typography with typographic separators (`Public · master · 35,000 stars · Synced Oct 16`).
 
-5. **Settings Modal UI (`components/SettingsModal.tsx`)**:
-   - Built interactive model management UI in place of the old static cascading list.
-   - Supports priority reordering via up/down buttons and automatic priority re-indexing.
-   - Supports individual model enable/disable toggle pills with failsafe to keep at least one model active.
-   - Displays pricing details for Gemini 4 Argon and all other tiers, with a one-click Reset to Defaults option.
+5. **Workspace, Chat & Command Deck (`components/RepoWorkspace.tsx`, `components/ChatCompiler.tsx`, `components/ContextInspector.tsx`, `components/StepLoader.tsx`)**:
+   - Sub-header: Clean inline status indicators (no capsule pills or pulsing dots) and sleek segmented mode toggles (`Agentic Loop` | `Full Repo`).
+   - ChatCompiler Empty State: Replaced terminal code box with an architectural geometric core emblem and interactive directive cards (`01.` through `04.`).
+   - Floating Command Deck: Sleek multi-line input deck with branch tag, shortcut hint `Cmd+Enter`, and active state illumination.
+   - Context Inspector: Segmented tabs (`Files` | `Call Graph`), unboxed exclude pattern tags, and high-density file tree.
+   - Step Loader: Removed `animate-ping` decorative dot; replaced all-caps shouting with clean Title Case.
 
-6. **Repo Workspace Integration (`components/RepoWorkspace.tsx`)**:
-   - Forwards `settings.models` to the `/api/compile` route handler during prompt compilation.
+6. **Pure Logic Unit Testing (`lib/utils.test.ts`)**:
+   - Created comprehensive Node 22 native unit test suite (`node:test` & `node:assert/strict`) verifying pricing tiers, token costs, USD formatting, and prompt encapsulation. 100% pass rate.
 
-## Verification
-- `compile_applet`: Production build passed with 0 errors.
-- `lint_applet`: ESLint validation passed with 0 warnings or errors.
+7. **Browser Verification & Playwright Captures**:
+   - Captured and critiqued desktop (1440x900), mobile (390x844), workspace view, settings modal, and interactive directive selection.

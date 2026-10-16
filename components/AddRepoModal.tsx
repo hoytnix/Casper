@@ -132,37 +132,42 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
           )}
 
           {preview && (
-            <div className="p-4 rounded-xl bg-slate-900/90 border border-indigo-500/40 space-y-3 animate-in fade-in duration-200">
+            <div className="p-4 rounded-xl bg-slate-900/90 border border-white/[0.08] space-y-3 animate-in fade-in duration-200">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold text-white font-mono">
                       {preview.owner}/{preview.repo}
                     </span>
-                    {preview.isPrivate ? (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                        <Lock className="w-2.5 h-2.5" /> Private
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        <Globe className="w-2.5 h-2.5" /> Public
-                      </span>
-                    )}
+                    <span className="text-slate-600" aria-hidden="true">&bull;</span>
+                    <span className="text-xs text-slate-400 inline-flex items-center gap-1">
+                      {preview.isPrivate ? (
+                        <>
+                          <Lock className="w-2.5 h-2.5 text-amber-400" />
+                          <span>Private</span>
+                        </>
+                      ) : (
+                        <>
+                          <Globe className="w-2.5 h-2.5 text-slate-400" />
+                          <span>Public</span>
+                        </>
+                      )}
+                    </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                    {preview.description}
+                    {preview.description || 'No repository description available.'}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 text-xs text-slate-400 pt-2 border-t border-slate-800">
+              <div className="flex items-center gap-4 text-xs text-slate-400 pt-2 border-t border-white/[0.06]">
                 <div className="flex items-center gap-1.5">
                   <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
                   <span className="font-mono text-slate-300">{preview.defaultBranch}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
-                  <span>{preview.stars.toLocaleString()} stars</span>
+                  <span className="font-mono tabular-nums">{preview.stars.toLocaleString()} stars</span>
                 </div>
               </div>
             </div>

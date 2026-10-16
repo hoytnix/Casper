@@ -107,21 +107,21 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
 
   return (
     <aside
-      className={`fixed lg:static top-16 right-0 lg:right-auto bottom-0 z-30 transition-all duration-300 ease-in-out border-l lg:border-l-0 lg:border-r border-slate-800 bg-slate-950/95 lg:bg-slate-950/60 backdrop-blur-xl flex flex-col ${
+      className={`fixed lg:static top-15 right-0 lg:right-auto bottom-0 z-30 transition-all duration-300 ease-in-out border-l lg:border-l-0 lg:border-r border-white/[0.08] bg-[#07090e]/95 lg:bg-[#07090e]/70 backdrop-blur-xl flex flex-col ${
         isOpen
           ? 'w-80 sm:w-96 translate-x-0'
           : 'w-0 -translate-x-full lg:translate-x-0 lg:w-0 overflow-hidden border-none'
       }`}
     >
       {/* Header */}
-      <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+      <div className="p-4 border-b border-white/[0.08] flex items-center justify-between">
         <div className="flex items-center gap-2">
           {isAgentic ? (
             <Compass className="w-4 h-4 text-indigo-400" />
           ) : (
-            <FolderTree className="w-4 h-4 text-indigo-400" />
+            <FolderTree className="w-4 h-4 text-sky-400" />
           )}
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+          <h3 className="text-xs font-bold text-white tracking-wide">
             {isAgentic ? 'Agentic Unix VFS Inspector' : 'Context Inspector'}
           </h3>
         </div>
@@ -129,18 +129,19 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
           onClick={onToggle}
           className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
           title="Collapse Drawer"
+          aria-label="Collapse Context Inspector"
         >
           <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* Tabs: Files vs Function Code Graph */}
-      <div className="flex border-b border-slate-800 bg-slate-900/50">
+      <div className="flex border-b border-white/[0.08] bg-slate-900/40 p-1 gap-1">
         <button
           onClick={() => setActiveTab('files')}
-          className={`flex-1 py-2.5 px-3 text-xs font-medium flex items-center justify-center gap-1.5 transition ${
+          className={`flex-1 py-1.5 px-3 text-xs font-medium rounded-md flex items-center justify-center gap-1.5 transition ${
             activeTab === 'files'
-              ? 'bg-indigo-600/20 text-indigo-300 border-b-2 border-indigo-500'
+              ? 'bg-slate-800/90 text-white shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -149,9 +150,9 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
         </button>
         <button
           onClick={() => setActiveTab('graph')}
-          className={`flex-1 py-2.5 px-3 text-xs font-medium flex items-center justify-center gap-1.5 transition ${
+          className={`flex-1 py-1.5 px-3 text-xs font-medium rounded-md flex items-center justify-center gap-1.5 transition ${
             activeTab === 'graph'
-              ? 'bg-indigo-600/20 text-indigo-300 border-b-2 border-indigo-500'
+              ? 'bg-slate-800/90 text-white shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -307,10 +308,10 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
                 onClick={() =>
                   isExcluded ? handleRemoveExclude(comm) : handleAddExclude(comm)
                 }
-                className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition ${
+                className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition cursor-pointer ${
                   isExcluded
                     ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    : 'bg-slate-900 border-white/[0.08] text-slate-400 hover:text-slate-200 hover:border-white/20'
                 }`}
               >
                 {isExcluded ? '✓ ' : '+ '}
@@ -332,12 +333,13 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
               }
             }}
             placeholder="Add custom pattern (e.g. mock/)"
-            className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-700/80 text-xs font-mono text-slate-200 placeholder:text-slate-600 outline-none focus:border-indigo-500"
+            className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-white/[0.08] text-xs font-mono text-slate-200 placeholder:text-slate-500 outline-none focus:border-indigo-500"
           />
           <button
             onClick={() => handleAddExclude(newExcludeInput)}
             disabled={!newExcludeInput.trim()}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 transition"
+            aria-label="Add exclude pattern"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>

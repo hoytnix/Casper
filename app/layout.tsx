@@ -1,8 +1,21 @@
 import type { Metadata, Viewport } from 'next';
+import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
+const plusJakartaSans = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-sans',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-mono',
+});
+
 export const viewport: Viewport = {
-  themeColor: '#020617',
+  themeColor: '#07090e',
   width: 'device-width',
   initialScale: 1,
 };
@@ -44,7 +57,7 @@ export default function RootLayout({
     <html lang="en" className="dark scroll-smooth">
       <body
         suppressHydrationWarning
-        className="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-indigo-500/30 selection:text-indigo-200 font-sans"
+        className={`${plusJakartaSans.variable} ${jetbrainsMono.variable} bg-[#07090e] text-slate-100 min-h-screen antialiased selection:bg-indigo-500/30 selection:text-indigo-200 font-sans`}
       >
         {children}
       </body>

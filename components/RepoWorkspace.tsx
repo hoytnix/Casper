@@ -558,35 +558,35 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
       case 'fetching_tree':
       case 'downloading_files':
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-medium animate-pulse">
+          <div className="flex items-center gap-1.5 text-sky-400 text-xs font-medium">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
             <span>Fetching repo tree...</span>
           </div>
         );
       case 'agentic_exploring':
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/40 text-indigo-300 text-xs font-medium animate-pulse">
+          <div className="flex items-center gap-1.5 text-indigo-300 text-xs font-medium">
             <Compass className="w-3.5 h-3.5 animate-spin" />
-            <span>Agent Exploring (Round {progress.currentRound || 1})...</span>
+            <span>Exploring (Round {progress.currentRound || 1})...</span>
           </div>
         );
       case 'compiling_prompt':
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-300 text-xs font-medium animate-pulse">
+          <div className="flex items-center gap-1.5 text-violet-300 text-xs font-medium">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
             <span>Compiling prompt...</span>
           </div>
         );
       case 'error':
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium">
+          <div className="flex items-center gap-1.5 text-rose-400 text-xs font-medium">
             <AlertCircle className="w-3.5 h-3.5" />
             <span>Failed</span>
           </div>
         );
       default:
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+          <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>Ready</span>
           </div>
@@ -595,26 +595,26 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 h-[calc(100vh-4rem)]">
+    <div className="flex-1 flex flex-col min-h-0 h-[calc(100vh-3.75rem)]">
       {/* Workspace Sub-Header */}
-      <div className="h-13 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between gap-3 flex-wrap">
+      <div className="h-13 border-b border-white/[0.08] bg-[#07090e]/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between gap-4 flex-wrap">
         {/* Repo & Branch Info */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs">
+          <div className="flex items-center gap-2 text-xs">
             <span className="font-mono text-slate-400">{repo.owner}/</span>
             <span className="font-mono font-bold text-white text-sm">{repo.repo}</span>
             <a
               href={`https://github.com/${repo.owner}/${repo.repo}`}
               target="_blank"
               rel="noreferrer"
-              className="text-slate-500 hover:text-indigo-400 transition ml-1"
+              className="text-slate-500 hover:text-indigo-400 transition ml-0.5"
               title="Open on GitHub"
             >
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
 
-          <div className="h-4 w-px bg-slate-800" />
+          <span className="text-slate-700" aria-hidden="true">|</span>
 
           {/* Branch Picker */}
           <div className="relative flex items-center">
@@ -623,7 +623,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               value={repo.branch}
               onChange={(e) => handleBranchChange(e.target.value)}
               disabled={isBranchLoading}
-              className="bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 text-xs font-mono rounded-lg px-2 py-1 outline-none focus:border-indigo-500 transition cursor-pointer"
+              className="bg-slate-900 border border-white/[0.08] hover:border-white/20 text-slate-200 text-xs font-mono rounded-lg px-2.5 py-1 outline-none focus:border-indigo-500 transition cursor-pointer"
             >
               {branches.map((b) => (
                 <option key={b} value={b}>
@@ -634,16 +634,16 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Controls: Mode Switcher, Status Pill & Drawer Toggle */}
-        <div className="flex items-center gap-2.5">
-          {/* Mode Switcher Pill */}
-          <div className="flex items-center bg-slate-900/90 border border-slate-800 rounded-lg p-0.5 text-xs">
+        {/* Controls: Mode Switcher, Status & Drawer Toggle */}
+        <div className="flex items-center gap-3">
+          {/* Mode Switcher Segmented Control */}
+          <div className="flex items-center bg-slate-900/90 border border-white/[0.08] rounded-lg p-0.5 text-xs">
             <button
               type="button"
               onClick={() => handleToggleMode('agentic')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition ${
                 mode === 'agentic'
-                  ? 'bg-indigo-600 text-white font-semibold shadow-sm'
+                  ? 'bg-indigo-600 text-white font-medium shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
               title="Agentic Sequential Exploration (Fast, low token overhead, targeted blast radius)"
@@ -654,9 +654,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             <button
               type="button"
               onClick={() => handleToggleMode('full')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition ${
                 mode === 'full'
-                  ? 'bg-indigo-600 text-white font-semibold shadow-sm'
+                  ? 'bg-indigo-600 text-white font-medium shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
               title="Full Repository Ingestion (Downloads and packs all files in memory)"
@@ -666,14 +666,14 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             </button>
           </div>
 
-          {/* Dynamic API Cost Badge */}
+          {/* Dynamic API Cost Indicator */}
           {snapshot?.costDetails && (
             <div
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 font-mono text-xs shadow-sm cursor-help"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/20 text-emerald-300 font-mono text-xs shadow-sm cursor-help"
               title={`Latest Snapshot API Cost: ${formatCostUsd(snapshot.costDetails.totalCostUsd)}\n• Model: ${snapshot.costDetails.modelName}\n• Input: ${snapshot.costDetails.inputTokens.toLocaleString()} tokens ($${snapshot.costDetails.inputCostUsd.toFixed(6)})\n• Output: ${snapshot.costDetails.outputTokens.toLocaleString()} tokens ($${snapshot.costDetails.outputCostUsd.toFixed(6)})`}
             >
               <Coins className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-              <span className="font-semibold text-emerald-200">
+              <span className="font-semibold text-emerald-300 tabular-nums">
                 {formatCostUsd(snapshot.costDetails.totalCostUsd)}
               </span>
             </div>
@@ -685,8 +685,8 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             onClick={() => setIsDrawerOpen(!isDrawerOpen)}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-medium transition ${
               isDrawerOpen
-                ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                ? 'bg-indigo-600/20 border-indigo-500/30 text-indigo-300'
+                : 'bg-slate-900 border-white/[0.08] text-slate-400 hover:text-white'
             }`}
             title="Toggle Context Inspector"
           >

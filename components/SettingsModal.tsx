@@ -46,6 +46,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [nanoStatus, setNanoStatus] = useState<string>('checking...');
   const [isWarmingUp, setIsWarmingUp] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
+  const [warmupNotice, setWarmupNotice] = useState<string | null>(null);
 
   const [models, setModels] = useState<ModelConfig[]>(() => {
     if (settings.models && settings.models.length > 0) {
@@ -123,6 +124,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <button
             onClick={onClose}
             className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800/80 transition"
+            aria-label="Close Settings"
           >
             <X className="w-4 h-4" />
           </button>
@@ -176,33 +178,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </span>
               </div>
 
-              <div className="pt-2 flex items-center justify-between border-t border-slate-800">
-                <span className="text-[11px] text-slate-400">Pre-warm embedding pipeline &amp; session</span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setIsWarmingUp(true);
-                    try {
-                      await warmUpLocalContextRouter([], 'global-warmup', routerEngine);
-                      alert('Local AI context router successfully warmed up!');
-                    } catch (e) {
-                      alert(`Warmup notice: ${e instanceof Error ? e.message : String(e)}`);
-                    } finally {
-                      setIsWarmingUp(false);
-                    }
-                  }}
-                  disabled={isWarmingUp}
-                  className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium text-[11px] transition flex items-center gap-1 disabled:opacity-50"
-                >
-                  {isWarmingUp ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Warming Up...</span>
-                    </>
-                  ) : (
-                    <span>Warm Up Local AI</span>
-                  )}
-                </button>
+              <div className="pt-2 flex flex-col gap-2 border-t border-white/[0.08]">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">Pre-warm embedding pipeline &amp; session</span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsWarmingUp(true);
+                      setWarmupNotice(null);
+                      try {
+                        await warmUpLocalContextRouter([], 'global-warmup', routerEngine);
+                        setWarmupNotice('Local AI context router successfully warmed up!');
+                      } catch (e) {
+                        setWarmupNotice(`Warmup notice: ${e instanceof Error ? e.message : String(e)}`);
+                      } finally {
+                        setIsWarmingUp(false);
+                      }
+                    }}
+                    disabled={isWarmingUp}
+                    className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium text-[11px] transition flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {isWarmingUp ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Warming Up...</span>
+                      </>
+                    ) : (
+                      <span>Warm Up Local AI</span>
+                    )}
+                  </button>
+                </div>
+                {warmupNotice && (
+                  <p className="text-[11px] text-sky-300 font-mono bg-sky-950/40 p-2 rounded-lg border border-sky-500/20">
+                    {warmupNotice}
+                  </p>
+                )}
               </div>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">

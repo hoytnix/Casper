@@ -32,11 +32,10 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
   return (
     <div className="w-full rounded-2xl glass-panel border border-indigo-500/30 p-5 shadow-2xl shadow-indigo-950/40 animate-in fade-in duration-300 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+      <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping" />
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-            <Compass className="w-4 h-4 text-indigo-400" />
+          <Compass className="w-4 h-4 text-indigo-400" />
+          <h4 className="text-xs font-bold text-white tracking-wide">
             {isAgentic
               ? 'Graph-Aware Unix VFS Agent Exploration'
               : 'Repository Ingestion Pipeline'}
@@ -44,8 +43,8 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
         </div>
         <div className="flex items-center gap-2">
           {progress.inputTokens && (
-            <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
-              <Coins className="w-3 h-3 text-emerald-400" />
+            <span className="text-xs font-mono text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+              <Coins className="w-3.5 h-3.5 text-emerald-400" />
               <span>~{progress.inputTokens.toLocaleString()} tokens in</span>
               {progress.costDetails && (
                 <span className="text-emerald-400 font-bold">&bull; {formatCostUsd(progress.costDetails.totalCostUsd)}</span>
@@ -53,7 +52,7 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
             </span>
           )}
           {progress.currentRound && progress.maxRounds && (
-            <span className="text-[11px] font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+            <span className="text-xs font-mono text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
               Round {progress.currentRound} of {progress.maxRounds}
             </span>
           )}
@@ -61,7 +60,7 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
       </div>
 
       {/* Main Status Callout */}
-      <div className="flex items-start gap-3 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+      <div className="flex items-start gap-3 p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
         <Loader2 className="w-4 h-4 text-indigo-400 animate-spin mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-slate-100">{progress.message}</p>
@@ -70,7 +69,7 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
               {progress.activePaths.map((p) => (
                 <span
                   key={p}
-                  className="font-mono text-[10px] text-indigo-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 flex items-center gap-1"
+                  className="font-mono text-[10px] text-indigo-300 bg-slate-900 px-2 py-0.5 rounded border border-white/[0.08] flex items-center gap-1"
                 >
                   <FileCode className="w-3 h-3 text-indigo-400" />
                   {p}
@@ -83,10 +82,10 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
 
       {/* Model Thinking & Reasoning Log */}
       {progress.thinkingContent && (
-        <div className="space-y-2 pt-2 border-t border-slate-800/80">
-          <p className="text-[10px] font-semibold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-            Agent Reasoning & Thinking Trail (thinkingLevel: high):
+        <div className="space-y-2 pt-2 border-t border-white/[0.06]">
+          <p className="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span>Agent Reasoning &amp; Thinking Trail (thinkingLevel: high)</span>
           </p>
           <div className="p-3 rounded-xl bg-purple-950/20 border border-purple-500/30 text-xs font-mono text-purple-200 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
             {progress.thinkingContent}
@@ -96,10 +95,10 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
 
       {/* Live Unix Tool Traces ($ grep, $ find, $ trace_call_graph, etc.) */}
       {progress.toolTraces && progress.toolTraces.length > 0 && (
-        <div className="space-y-2 pt-2 border-t border-slate-800/80">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+        <div className="space-y-2 pt-2 border-t border-white/[0.06]">
+          <p className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
             <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-            Live Unix & Code Graph Tool Activity ({progress.toolTraces.length}):
+            <span>Live Unix &amp; Code Graph Tool Activity ({progress.toolTraces.length})</span>
           </p>
           <div className="space-y-1.5">
             {progress.toolTraces.map((trace) => {
