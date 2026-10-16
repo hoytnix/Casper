@@ -3,8 +3,8 @@ import { FinanceWorkspace } from '@/components/FinanceWorkspace';
 import { FinanceHeader } from '@/components/FinanceHeader';
 
 export const metadata = {
-  title: 'Financial Tracker & Spending Analytics - Next.js Expert',
-  description: 'Track and graph spending over time with modern React Server Components and Tailwind CSS.',
+  title: 'Token Costs Over Time & Token Spending Analytics - Next.js Expert',
+  description: 'Track API token consumption, model inference expenses, and spending over time for your Gemini code compilation sessions.',
 };
 
 export default function FinancePage() {

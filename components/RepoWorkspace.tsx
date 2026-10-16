@@ -38,7 +38,7 @@ import {
   applyFileDelta,
 } from '@/lib/github';
 import { warmUpLocalContextRouter, routeNextJsContext } from '@/lib/local-context-router';
-import { formatCostUsd, calculateModelCost, resolveModelPricing } from '@/lib/utils';
+import { formatCostUsd, calculateModelCost, resolveModelPricing, extractSuggestedRefactors } from '@/lib/utils';
 
 interface RepoWorkspaceProps {
   repo: Repo;
@@ -608,6 +608,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                   }));
                 } else if (evt.type === 'prompt_chunk') {
                   accumulatedContent += evt.text || '';
+                  const cleanDisplayPrompt = extractSuggestedRefactors(accumulatedContent).cleanPrompt;
                   const currentOutputTokens = Math.max(1, Math.ceil(accumulatedContent.length / 4));
                   const dynamicCost = calculateModelCost(
                     modelUsed || 'gemini-3.8-flash',
@@ -627,7 +628,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                       m.id === assistantMsgId
                         ? {
                             ...m,
-                            content: accumulatedContent,
+                            content: cleanDisplayPrompt,
                             thinkingContent: accumulatedThinking || undefined,
                             costDetails: dynamicCost,
                             snapshotMeta: {
@@ -652,16 +653,19 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                     )
                   );
                 } else if (evt.type === 'suggested_refactors') {
-                  const refactors = evt.refactors;
+                  const refactors = evt.refactors || [];
+                  const cleanText = evt.cleanPrompt || extractSuggestedRefactors(accumulatedContent).cleanPrompt;
+                  accumulatedContent = cleanText;
                   setMessages((prev) =>
                     prev.map((m) =>
                       m.id === assistantMsgId
                         ? {
                             ...m,
-                            suggestedRefactors: refactors,
+                            content: cleanText,
+                            suggestedRefactors: refactors.length > 0 ? refactors : undefined,
                             snapshotMeta: {
                               ...m.snapshotMeta!,
-                              suggestedRefactors: refactors,
+                              suggestedRefactors: refactors.length > 0 ? refactors : undefined,
                             },
                           }
                         : m
@@ -671,17 +675,20 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                   modelUsed = evt.model || modelUsed;
                   fallbackPass = evt.pass || fallbackPass;
                   if (evt.inputTokens) serverInputTokens = evt.inputTokens;
-                  if (evt.suggestedRefactors) {
+                  const finalCleanText = evt.cleanContent || extractSuggestedRefactors(accumulatedContent).cleanPrompt;
+                  accumulatedContent = finalCleanText;
+                  if (evt.suggestedRefactors && Array.isArray(evt.suggestedRefactors)) {
                     const refactors = evt.suggestedRefactors;
                     setMessages((prev) =>
                       prev.map((m) =>
                         m.id === assistantMsgId
                           ? {
                               ...m,
-                              suggestedRefactors: refactors,
+                              content: finalCleanText,
+                              suggestedRefactors: refactors.length > 0 ? refactors : undefined,
                               snapshotMeta: {
                                 ...m.snapshotMeta!,
-                                suggestedRefactors: refactors,
+                                suggestedRefactors: refactors.length > 0 ? refactors : undefined,
                               },
                             }
                           : m
@@ -710,6 +717,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               }
             }
           }
+
+          const { cleanPrompt: finalCleanContent, refactors: finalParsedRefactors } = extractSuggestedRefactors(accumulatedContent);
+          accumulatedContent = finalCleanContent;
 
           const finalTokensCount = Math.max(1, Math.ceil(accumulatedContent.length / 4));
           const calculatedCost =
@@ -750,9 +760,10 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             m.id === assistantMsgId
               ? {
                   ...m,
-                  content: accumulatedContent,
+                  content: finalCleanContent,
                   thinkingContent: accumulatedThinking || undefined,
                   costDetails: calculatedCost,
+                  suggestedRefactors: m.suggestedRefactors || (finalParsedRefactors.length > 0 ? finalParsedRefactors : undefined),
                   snapshotMeta: {
                     ...m.snapshotMeta!,
                     filesCount: downloadedInvestigated.length,
@@ -769,6 +780,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                     outputTokens: calculatedCost.outputTokens,
                     totalCostUsd: calculatedCost.totalCostUsd,
                     modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
+                    suggestedRefactors: m.suggestedRefactors || (finalParsedRefactors.length > 0 ? finalParsedRefactors : undefined),
                   },
                 }
               : m
@@ -903,6 +915,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           if (done) break;
           const text = decoder.decode(value, { stream: true });
           accumulatedContent += text;
+          const cleanDisplayPrompt = extractSuggestedRefactors(accumulatedContent).cleanPrompt;
           const currentOutputTokens = Math.max(1, Math.ceil(accumulatedContent.length / 4));
           const dynamicCost = calculateModelCost(serverModelUsed, serverInputTokens, currentOutputTokens);
           finalCostDetails = dynamicCost;
@@ -912,7 +925,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               m.id === assistantMsgId
                 ? {
                     ...m,
-                    content: accumulatedContent,
+                    content: cleanDisplayPrompt,
                     costDetails: dynamicCost,
                     snapshotMeta: {
                       ...m.snapshotMeta!,
@@ -933,6 +946,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             )
           );
         }
+
+        const { cleanPrompt: finalClassicCleanContent, refactors: classicParsedRefactors } = extractSuggestedRefactors(accumulatedContent);
+        accumulatedContent = finalClassicCleanContent;
 
         const finalTokensCount = Math.max(1, Math.ceil(accumulatedContent.length / 4));
         const calculatedCost = finalCostDetails || calculateModelCost(serverModelUsed, serverInputTokens, finalTokensCount);
@@ -964,8 +980,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           m.id === assistantMsgId
             ? {
                 ...m,
-                content: accumulatedContent,
+                content: finalClassicCleanContent,
                 costDetails: calculatedCost,
+                suggestedRefactors: classicParsedRefactors.length > 0 ? classicParsedRefactors : undefined,
                 snapshotMeta: {
                   ...m.snapshotMeta!,
                   filesCount: downloadedFiles.length,
@@ -979,6 +996,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                   outputTokens: calculatedCost.outputTokens,
                   totalCostUsd: calculatedCost.totalCostUsd,
                   modelPricing: resolveModelPricing(serverModelUsed),
+                  suggestedRefactors: classicParsedRefactors.length > 0 ? classicParsedRefactors : undefined,
                 },
               }
             : m

@@ -1,92 +1,113 @@
-import type { Transaction, SpendingSummary } from '../types/index.ts';
+import type { TokenCostRecord, TokenCostSummary } from '../types/index.ts';
 
 /**
- * Computes financial metrics and historical trends from an array of transactions.
+ * Computes token cost metrics and historical trends from an array of token cost records.
  */
-export function calculateSpendingSummary(transactions: Transaction[]): SpendingSummary {
-  let totalSpent = 0;
-  let totalIncome = 0;
-  const byCategory: Record<string, number> = {};
-  const dailyMap: Record<string, { expense: number; income: number }> = {};
+export function calculateTokenCostSummary(records: TokenCostRecord[]): TokenCostSummary {
+  let totalSpentUsd = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  const byModel: Record<string, { cost: number; inputTokens: number; outputTokens: number; runs: number }> = {};
+  const dailyMap: Record<string, { costUsd: number; inputTokens: number; outputTokens: number; runs: number }> = {};
 
-  for (const t of transactions) {
-    const amt = typeof t.amount === 'number' && !isNaN(t.amount) ? Math.max(0, t.amount) : 0;
-    const dateKey = t.date || new Date().toISOString().split('T')[0];
+  for (const r of records) {
+    const cost = typeof r.totalCostUsd === 'number' && !isNaN(r.totalCostUsd) ? Math.max(0, r.totalCostUsd) : (typeof r.amount === 'number' ? r.amount : 0);
+    const input = typeof r.inputTokens === 'number' && !isNaN(r.inputTokens) ? Math.max(0, r.inputTokens) : 0;
+    const output = typeof r.outputTokens === 'number' && !isNaN(r.outputTokens) ? Math.max(0, r.outputTokens) : 0;
+    const dateKey = r.date || new Date().toISOString().split('T')[0];
+    const model = r.modelName || 'gemini-2.5-pro';
+
+    totalSpentUsd += cost;
+    totalInputTokens += input;
+    totalOutputTokens += output;
+
+    if (!byModel[model]) {
+      byModel[model] = { cost: 0, inputTokens: 0, outputTokens: 0, runs: 0 };
+    }
+    byModel[model].cost += cost;
+    byModel[model].inputTokens += input;
+    byModel[model].outputTokens += output;
+    byModel[model].runs += 1;
 
     if (!dailyMap[dateKey]) {
-      dailyMap[dateKey] = { expense: 0, income: 0 };
+      dailyMap[dateKey] = { costUsd: 0, inputTokens: 0, outputTokens: 0, runs: 0 };
     }
-
-    if (t.type === 'expense') {
-      totalSpent += amt;
-      const cat = t.category || 'General';
-      byCategory[cat] = (byCategory[cat] || 0) + amt;
-      dailyMap[dateKey].expense += amt;
-    } else if (t.type === 'income') {
-      totalIncome += amt;
-      dailyMap[dateKey].income += amt;
-    }
+    dailyMap[dateKey].costUsd += cost;
+    dailyMap[dateKey].inputTokens += input;
+    dailyMap[dateKey].outputTokens += output;
+    dailyMap[dateKey].runs += 1;
   }
 
-  // Sort dates chronologically
   const sortedDates = Object.keys(dailyMap).sort((a, b) => a.localeCompare(b));
-
   const historicalTrend = sortedDates.map((date) => ({
     date,
-    amount: dailyMap[date].expense, // Historical expense amount for spending trend
-    expenseAmount: dailyMap[date].expense,
-    incomeAmount: dailyMap[date].income,
+    costUsd: Math.round(dailyMap[date].costUsd * 10000) / 10000,
+    inputTokens: dailyMap[date].inputTokens,
+    outputTokens: dailyMap[date].outputTokens,
+    runs: dailyMap[date].runs,
+    amount: dailyMap[date].costUsd,
+    expenseAmount: dailyMap[date].costUsd,
+    incomeAmount: 0,
   }));
 
+  const totalSpent = Math.round(totalSpentUsd * 100) / 100;
+  const totalIncome = 0;
+  const netBalance = -totalSpent;
+  const byCategory: Record<string, number> = {};
+  for (const [model, data] of Object.entries(byModel)) {
+    byCategory[model] = Math.round(data.cost * 100) / 100;
+  }
+
   return {
-    totalSpent: Math.round(totalSpent * 100) / 100,
-    totalIncome: Math.round(totalIncome * 100) / 100,
-    netBalance: Math.round((totalIncome - totalSpent) * 100) / 100,
-    byCategory,
+    totalSpentUsd: Math.round(totalSpentUsd * 10000) / 10000,
+    totalInputTokens,
+    totalOutputTokens,
+    totalRuns: records.length,
+    byModel,
     historicalTrend,
-  };
+    totalSpent,
+    totalIncome,
+    netBalance,
+    byCategory,
+  } as any;
 }
 
+export const calculateSpendingSummary = calculateTokenCostSummary;
+
 /**
- * Filters transactions based on search term, category, type, and date range.
+ * Filters token cost records based on search query, model, and date range.
  */
-export function filterTransactions(
-  transactions: Transaction[],
+export function filterTokenRecords(
+  records: TokenCostRecord[],
   filters: {
     query?: string;
-    category?: string;
-    type?: 'all' | 'expense' | 'income';
+    modelName?: string;
     dateRange?: 'all' | '7d' | '30d' | '90d' | 'year';
     currentDate?: Date;
+    type?: string;
+    category?: string;
   }
-): Transaction[] {
-  const { query, category, type = 'all', dateRange = 'all', currentDate = new Date() } = filters;
+): TokenCostRecord[] {
+  const { query, modelName, dateRange = 'all', currentDate = new Date() } = filters;
 
-  return transactions.filter((t) => {
-    // Type filter
-    if (type !== 'all' && t.type !== type) {
+  return records.filter((r) => {
+    if (modelName && modelName !== 'all' && r.modelName !== modelName) {
       return false;
     }
 
-    // Category filter
-    if (category && category !== 'all' && t.category !== category) {
-      return false;
-    }
-
-    // Query filter (matches title, notes, or category)
     if (query && query.trim() !== '') {
       const q = query.toLowerCase().trim();
-      const matchTitle = t.title.toLowerCase().includes(q);
-      const matchNotes = t.notes ? t.notes.toLowerCase().includes(q) : false;
-      const matchCat = t.category.toLowerCase().includes(q);
-      if (!matchTitle && !matchNotes && !matchCat) {
+      const matchRepo = (r.repoName || '').toLowerCase().includes(q);
+      const matchModel = (r.modelName || '').toLowerCase().includes(q);
+      const matchNotes = (r.notes || '').toLowerCase().includes(q);
+      const matchTitle = (r.title || '').toLowerCase().includes(q);
+      if (!matchRepo && !matchModel && !matchNotes && !matchTitle) {
         return false;
       }
     }
 
-    // Date range filter
     if (dateRange !== 'all') {
-      const txDate = new Date(t.date);
+      const txDate = new Date(r.date);
       if (isNaN(txDate.getTime())) return false;
 
       const diffTime = currentDate.getTime() - txDate.getTime();
@@ -101,3 +122,5 @@ export function filterTransactions(
     return true;
   });
 }
+
+export const filterTransactions = filterTokenRecords;

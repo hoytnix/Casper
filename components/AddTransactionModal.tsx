@@ -1,15 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, DollarSign, Calendar, Tag, FileText, ArrowDownRight, ArrowUpRight, Loader2 } from 'lucide-react';
+import { X, Coins, Calendar, Tag, FileText, Cpu, Loader2 } from 'lucide-react';
 import { z } from 'zod';
-import { TransactionType } from '@/types';
+import { TokenCostRecord } from '@/types';
 
-const transactionFormSchema = z.object({
-  title: z.string().trim().min(2, 'Title must be at least 2 characters'),
-  amount: z.number().positive('Amount must be greater than $0'),
-  category: z.string().trim().min(1, 'Please choose or enter a category'),
-  type: z.enum(['expense', 'income'] as const),
+const STORAGE_KEY = 'nextjs_expert_token_records_v1';
+
+const tokenRecordFormSchema = z.object({
+  repoName: z.string().trim().min(2, 'Repository name is required'),
+  modelName: z.string().trim().min(2, 'Model name is required'),
+  inputTokens: z.number().nonnegative('Input tokens must be >= 0'),
+  outputTokens: z.number().nonnegative('Output tokens must be >= 0'),
+  totalCostUsd: z.number().nonnegative('Cost must be >= 0'),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Valid date (YYYY-MM-DD) is required'),
   notes: z.string().optional(),
 });
@@ -20,10 +23,13 @@ interface AddTransactionModalProps {
   onSuccess: () => void;
 }
 
-const CATEGORY_PRESETS: Record<TransactionType, string[]> = {
-  expense: ['Infrastructure', 'Software', 'Personnel', 'Hardware', 'Marketing', 'Office', 'General'],
-  income: ['Revenue', 'Consulting', 'Client Retainer', 'Investment', 'Grant', 'General'],
-};
+const MODEL_PRESETS = [
+  'gemini-4-argon',
+  'gemini-2.5-pro',
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+];
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   isOpen,
@@ -32,24 +38,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 }) => {
   const today = new Date().toISOString().split('T')[0];
 
-  const [type, setType] = useState<TransactionType>('expense');
-  const [title, setTitle] = useState('');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('Infrastructure');
+  const [repoName, setRepoName] = useState('owner/repo');
+  const [modelName, setModelName] = useState('gemini-4-argon');
+  const [inputTokens, setInputTokens] = useState('50000');
+  const [outputTokens, setOutputTokens] = useState('10000');
+  const [totalCostUsd, setTotalCostUsd] = useState('0.25');
   const [date, setDate] = useState(today);
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-
-  const handleTypeChange = (newType: TransactionType) => {
-    setType(newType);
-    if (newType === 'expense' && !CATEGORY_PRESETS.expense.includes(category)) {
-      setCategory('Infrastructure');
-    } else if (newType === 'income' && !CATEGORY_PRESETS.income.includes(category)) {
-      setCategory('Revenue');
-    }
-  };
 
   // Keyboard Escape listener
   useEffect(() => {
@@ -69,13 +67,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setApiError(null);
     setErrors({});
 
-    const numericAmount = parseFloat(amount);
+    const numInput = parseInt(inputTokens, 10);
+    const numOutput = parseInt(outputTokens, 10);
+    const numCost = parseFloat(totalCostUsd);
 
-    const validation = transactionFormSchema.safeParse({
-      title,
-      amount: isNaN(numericAmount) ? undefined : numericAmount,
-      category,
-      type,
+    const validation = tokenRecordFormSchema.safeParse({
+      repoName,
+      modelName,
+      inputTokens: isNaN(numInput) ? -1 : numInput,
+      outputTokens: isNaN(numOutput) ? -1 : numOutput,
+      totalCostUsd: isNaN(numCost) ? -1 : numCost,
       date,
       notes: notes.trim() || undefined,
     });
@@ -94,26 +95,47 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      const res = await fetch('/api/finance', {
+
+      const newRecord: TokenCostRecord = {
+        id: `tok-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        repoName: validation.data.repoName,
+        modelName: validation.data.modelName,
+        inputTokens: validation.data.inputTokens,
+        outputTokens: validation.data.outputTokens,
+        totalCostUsd: validation.data.totalCostUsd,
+        date: validation.data.date,
+        notes: validation.data.notes,
+        title: validation.data.repoName,
+        amount: validation.data.totalCostUsd,
+        category: validation.data.modelName,
+        type: 'expense',
+      };
+
+      // Save to localStorage DB
+      try {
+        const existingStored = localStorage.getItem(STORAGE_KEY);
+        const existingRecords: TokenCostRecord[] = existingStored ? JSON.parse(existingStored) : [];
+        const updated = [newRecord, ...existingRecords];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed to save to localStorage:', e);
+      }
+
+      // Also call API endpoint for consistency
+      fetch('/api/finance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(validation.data),
-      });
+      }).catch(() => {});
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to record transaction');
-      }
-
-      // Reset form state
-      setTitle('');
-      setAmount('');
+      // Reset form
+      setRepoName('owner/repo');
       setNotes('');
       setDate(today);
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      setApiError(err instanceof Error ? err.message : 'Network error recording transaction');
+      setApiError(err instanceof Error ? err.message : 'Error recording token usage');
     } finally {
       setIsSubmitting(false);
     }
@@ -133,8 +155,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08]">
           <h2 id="modal-title" className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-indigo-400" />
-            <span>Record New Transaction</span>
+            <Coins className="w-5 h-5 text-indigo-400" />
+            <span>Log Token Cost &amp; Usage Record</span>
           </h2>
           <button
             onClick={onClose}
@@ -153,133 +175,128 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             </div>
           )}
 
-          {/* Type Segmented Control */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-300">Transaction Type</label>
-            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900/80 rounded-xl border border-white/[0.06]">
-              <button
-                type="button"
-                onClick={() => handleTypeChange('expense')}
-                className={`flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-lg transition-all ${
-                  type === 'expense'
-                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <ArrowDownRight className="w-4 h-4 text-rose-400" />
-                <span>Expense</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleTypeChange('income')}
-                className={`flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-lg transition-all ${
-                  type === 'income'
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <ArrowUpRight className="w-4 h-4 text-emerald-400" />
-                <span>Income</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Title & Amount Grid */}
+          {/* Repo Name & Model Name */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label htmlFor="tx-title" className="text-xs font-medium text-slate-300">
-                Title / Description *
+              <label htmlFor="repo-name" className="text-xs font-medium text-slate-300 flex items-center gap-1">
+                <Tag className="w-3.5 h-3.5 text-slate-400" />
+                <span>Repository / Session *</span>
               </label>
               <input
-                id="tx-title"
+                id="repo-name"
                 type="text"
-                placeholder="e.g. AWS Cloud Hosting"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className={`w-full px-3 py-2 text-xs rounded-xl bg-slate-900/70 border text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition ${
-                  errors.title ? 'border-rose-500/60 bg-rose-500/5' : 'border-white/[0.08]'
+                placeholder="e.g. facebook/react"
+                value={repoName}
+                onChange={(e) => setRepoName(e.target.value)}
+                className={`w-full px-3 py-2 text-xs font-mono rounded-xl bg-slate-900/70 border text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition ${
+                  errors.repoName ? 'border-rose-500/60 bg-rose-500/5' : 'border-white/[0.08]'
                 }`}
               />
-              {errors.title && <p className="text-[11px] text-rose-400">{errors.title}</p>}
+              {errors.repoName && <p className="text-[11px] text-rose-400">{errors.repoName}</p>}
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="tx-amount" className="text-xs font-medium text-slate-300">
-                Amount (USD) *
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-mono">$</span>
-                <input
-                  id="tx-amount"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className={`w-full pl-7 pr-3 py-2 text-xs font-mono rounded-xl bg-slate-900/70 border text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition ${
-                    errors.amount ? 'border-rose-500/60 bg-rose-500/5' : 'border-white/[0.08]'
-                  }`}
-                />
-              </div>
-              {errors.amount && <p className="text-[11px] text-rose-400">{errors.amount}</p>}
-            </div>
-          </div>
-
-          {/* Category & Date Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label htmlFor="tx-category" className="text-xs font-medium text-slate-300 flex items-center gap-1">
-                <Tag className="w-3.5 h-3.5 text-slate-400" />
-                <span>Category *</span>
+              <label htmlFor="model-name" className="text-xs font-medium text-slate-300 flex items-center gap-1">
+                <Cpu className="w-3.5 h-3.5 text-slate-400" />
+                <span>Gemini Model *</span>
               </label>
               <select
-                id="tx-category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                id="model-name"
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-900/70 border border-white/[0.08] text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
               >
-                {CATEGORY_PRESETS[type].map((cat) => (
-                  <option key={cat} value={cat} className="bg-slate-900 text-slate-100">
-                    {cat}
+                {MODEL_PRESETS.map((m) => (
+                  <option key={m} value={m} className="bg-slate-900 text-slate-100 font-mono">
+                    {m}
                   </option>
                 ))}
               </select>
-              {errors.category && <p className="text-[11px] text-rose-400">{errors.category}</p>}
+              {errors.modelName && <p className="text-[11px] text-rose-400">{errors.modelName}</p>}
+            </div>
+          </div>
+
+          {/* Tokens & Cost Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <label htmlFor="input-tokens" className="text-xs font-medium text-slate-300">
+                Input Tokens *
+              </label>
+              <input
+                id="input-tokens"
+                type="number"
+                min="0"
+                step="100"
+                value={inputTokens}
+                onChange={(e) => setInputTokens(e.target.value)}
+                className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-slate-900/70 border border-white/[0.08] text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
+              />
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="tx-date" className="text-xs font-medium text-slate-300 flex items-center gap-1">
+              <label htmlFor="output-tokens" className="text-xs font-medium text-slate-300">
+                Output Tokens *
+              </label>
+              <input
+                id="output-tokens"
+                type="number"
+                min="0"
+                step="50"
+                value={outputTokens}
+                onChange={(e) => setOutputTokens(e.target.value)}
+                className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-slate-900/70 border border-white/[0.08] text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="total-cost" className="text-xs font-medium text-slate-300">
+                Cost ($ USD) *
+              </label>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-mono">$</span>
+                <input
+                  id="total-cost"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={totalCostUsd}
+                  onChange={(e) => setTotalCostUsd(e.target.value)}
+                  className="w-full pl-6 pr-2.5 py-2 text-xs font-mono rounded-xl bg-slate-900/70 border border-white/[0.08] text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Date & Notes Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label htmlFor="token-date" className="text-xs font-medium text-slate-300 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
                 <span>Date *</span>
               </label>
               <input
-                id="tx-date"
+                id="token-date"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className={`w-full px-3 py-2 text-xs font-mono rounded-xl bg-slate-900/70 border text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition ${
-                  errors.date ? 'border-rose-500/60 bg-rose-500/5' : 'border-white/[0.08]'
-                }`}
+                className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-slate-900/70 border border-white/[0.08] text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
               />
-              {errors.date && <p className="text-[11px] text-rose-400">{errors.date}</p>}
             </div>
-          </div>
 
-          {/* Optional Notes */}
-          <div className="space-y-1.5">
-            <label htmlFor="tx-notes" className="text-xs font-medium text-slate-300 flex items-center gap-1">
-              <FileText className="w-3.5 h-3.5 text-slate-400" />
-              <span>Notes (Optional)</span>
-            </label>
-            <input
-              id="tx-notes"
-              type="text"
-              placeholder="e.g. Monthly ECS cluster invoice"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-900/70 border border-white/[0.08] text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
-            />
+            <div className="space-y-1.5">
+              <label htmlFor="token-notes" className="text-xs font-medium text-slate-300 flex items-center gap-1">
+                <FileText className="w-3.5 h-3.5 text-slate-400" />
+                <span>Notes (Optional)</span>
+              </label>
+              <input
+                id="token-notes"
+                type="text"
+                placeholder="e.g. Agentic compilation run"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-900/70 border border-white/[0.08] text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
+              />
+            </div>
           </div>
 
           {/* Actions */}
@@ -288,14 +305,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-medium rounded-xl text-slate-400 hover:text-white hover:bg-white/[0.06] transition"
+              className="px-4 py-2 text-xs font-medium rounded-xl text-slate-400 hover:text-white hover:bg-white/[0.06] transition cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white shadow-md shadow-indigo-600/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white shadow-md shadow-indigo-600/30 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {isSubmitting ? (
                 <>
@@ -303,7 +320,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   <span>Recording...</span>
                 </>
               ) : (
-                <span>Record Transaction</span>
+                <span>Log Token Cost</span>
               )}
             </button>
           </div>

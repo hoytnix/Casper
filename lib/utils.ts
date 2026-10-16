@@ -6,15 +6,82 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Robustly parses and extracts suggested refactor directives from compiled prompt text.
+ * Splices out the delimiter `---SUGGESTED_REFACTORS---` (and any trailing variant / JSON array / fences)
+ * returning cleanPrompt without any plaintext leakage, and an array of up to 4 refactor prompt strings.
+ */
+export function extractSuggestedRefactors(text: string): { cleanPrompt: string; refactors: string[] } {
+  if (!text) return { cleanPrompt: '', refactors: [] };
+
+  // Match delimiter like ---SUGGESTED_REFACTORS--- or --- SUGGESTED_REFACTORS --- with any suffix
+  const delimiterRegex = /(?:[\r\n\s]+)?---+[\s*]*SUGGESTED_REFACTORS[\s*]*---+([\s\S]*)$/i;
+  const match = text.match(delimiterRegex);
+
+  let cleanPrompt = text;
+  let refactors: string[] = [];
+
+  if (match && match.index !== undefined) {
+    cleanPrompt = text.slice(0, match.index).trim();
+    const rawSuffix = (match[1] || '').trim();
+
+    if (rawSuffix) {
+      // 1. Try finding complete JSON array [ ... ]
+      const startBracket = rawSuffix.indexOf('[');
+      const endBracket = rawSuffix.lastIndexOf(']');
+      if (startBracket !== -1 && endBracket !== -1 && endBracket > startBracket) {
+        const jsonBlock = rawSuffix.slice(startBracket, endBracket + 1);
+        try {
+          const parsed = JSON.parse(jsonBlock);
+          if (Array.isArray(parsed)) {
+            refactors = parsed
+              .filter((r) => typeof r === 'string' && r.trim().length > 0)
+              .map((r) => r.trim())
+              .slice(0, 4);
+          }
+        } catch {
+          // If JSON.parse fails (e.g. unescaped quotes or trailing commas), fallback to regex string extraction
+          const matches = Array.from(jsonBlock.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g))
+            .map((m) => m[1].replace(/\\"/g, '"').trim())
+            .filter((s) => s.length > 5);
+          if (matches.length > 0) {
+            refactors = matches.slice(0, 4);
+          }
+        }
+      } else {
+        // Fallback: check if quotes exist in rawSuffix
+        const matches = Array.from(rawSuffix.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g))
+          .map((m) => m[1].replace(/\\"/g, '"').trim())
+          .filter((s) => s.length > 5);
+        if (matches.length > 0) {
+          refactors = matches.slice(0, 4);
+        }
+      }
+    }
+  } else {
+    // Check if in-flight streaming has started outputting the delimiter at the very end
+    const partialMatch = text.match(/(?:[\r\n\s]+)?---+[\s*]*SUGGESTED[A-Z_0-9-]*[\s*-]*$/i);
+    if (partialMatch && partialMatch.index !== undefined) {
+      cleanPrompt = text.slice(0, partialMatch.index).trim();
+    }
+  }
+
+  return { cleanPrompt, refactors };
+}
+
+/**
  * Sanitizes and formats the compiled execution prompt.
+ * Strips SUGGESTED_REFACTORS delimiter and trailing JSON/plaintext completely.
  * Strips outer enclosing code fences (e.g. ````markdown ... ````, ```markdown ... ```, or ``markdown ... ``)
  * and stray leading/trailing backticks while preserving all internal code blocks, @[/paths], and formatting.
  */
 export function formatCompiledPrompt(content: string): string {
   if (!content) return '';
-  let cleaned = content.trim();
 
-  // Pattern 1: Exact outer code block with 2, 3, 4, or 5 backticks or tildes with optional markdown/md tag
+  // Step 1: Splice out any SUGGESTED_REFACTORS delimiter and trailing metadata
+  const { cleanPrompt } = extractSuggestedRefactors(content);
+  let cleaned = cleanPrompt.trim();
+
+  // Step 2: Pattern 1: Exact outer code block with 2, 3, 4, or 5 backticks or tildes with optional markdown/md tag
   const fullBlockRegex = /^(`{2,5}|~{2,5})(?:markdown|md)?\s*[\r\n]+([\s\S]*?)[\r\n]+\s*\1\s*$/i;
   const match = cleaned.match(fullBlockRegex);
   if (match && match[2]) {
@@ -30,6 +97,9 @@ export function formatCompiledPrompt(content: string): string {
     // Pattern 4: Strip trailing stray backticks attached to or following text on the final line
     cleaned = cleaned.replace(/(?:\s+|(?<=[^\s]))(`{2,5}|~{2,5})\s*$/i, '');
   }
+
+  // Step 3: Final check to remove any trailing partial delimiter that might have been inside code fences
+  cleaned = cleaned.replace(/(?:[\r\n\s]+)?---+[\s*]*SUGGESTED(?:_REFACTORS)?[\s\S]*$/i, '').trim();
 
   return cleaned.trim();
 }

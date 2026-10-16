@@ -1,87 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Transaction, SpendingSummary } from '@/types';
+import { TokenCostRecord, TokenCostSummary } from '@/types';
 import { z } from 'zod';
+import { calculateTokenCostSummary } from '@/lib/finance-calculations';
 
-const createTransactionSchema = z.object({
-  title: z.string().trim().min(1, 'Title is required'),
-  amount: z.coerce.number().positive('Amount must be greater than 0'),
-  category: z.string().trim().min(1, 'Category is required'),
-  type: z.enum(['expense', 'income']),
+const createTokenRecordSchema = z.object({
+  repoName: z.string().trim().min(1, 'Repository name is required'),
+  modelName: z.string().trim().min(1, 'Model name is required'),
+  inputTokens: z.coerce.number().nonnegative('Input tokens must be >= 0'),
+  outputTokens: z.coerce.number().nonnegative('Output tokens must be >= 0'),
+  totalCostUsd: z.coerce.number().nonnegative('Total cost must be >= 0'),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be formatted YYYY-MM-DD'),
   notes: z.string().optional(),
 });
 
-// Seed data simulating realistic cloud, software, infrastructure and revenue cash flow
-let mockTransactions: Transaction[] = [
-  { id: 'tx-1', title: 'Cloud Hosting (AWS)', amount: 145.50, category: 'Infrastructure', type: 'expense', date: '2026-05-01', notes: 'Production cluster ECS & RDS' },
-  { id: 'tx-2', title: 'Client Enterprise Retainer', amount: 4800.00, category: 'Revenue', type: 'income', date: '2026-05-03', notes: 'Monthly Next.js architectural retainer' },
-  { id: 'tx-3', title: 'Vercel Pro Team', amount: 60.00, category: 'Software', type: 'expense', date: '2026-05-05', notes: 'Hosting edge functions & analytics' },
-  { id: 'tx-4', title: 'OpenAI & Anthropic API', amount: 210.40, category: 'Infrastructure', type: 'expense', date: '2026-05-08', notes: 'Inference token usage' },
-  { id: 'tx-5', title: 'Figma Organization', amount: 45.00, category: 'Software', type: 'expense', date: '2026-05-11', notes: 'Design workspace' },
-  { id: 'tx-6', title: 'GitHub Enterprise Suite', amount: 84.00, category: 'Software', type: 'expense', date: '2026-05-14', notes: 'Team seats & CI/CD minutes' },
-  { id: 'tx-7', title: 'Contract UI Designer', amount: 1250.00, category: 'Personnel', type: 'expense', date: '2026-05-18', notes: 'Dashboard component library sprint' },
-  { id: 'tx-8', title: 'Consulting Advisory Services', amount: 3200.00, category: 'Revenue', type: 'income', date: '2026-05-20', notes: 'Performance optimization workshop' },
-  { id: 'tx-9', title: 'Supabase Database Scale', amount: 75.00, category: 'Infrastructure', type: 'expense', date: '2026-05-22', notes: 'PostgreSQL compute add-ons' },
-  { id: 'tx-10', title: 'Hardware Security Keys', amount: 120.00, category: 'Hardware', type: 'expense', date: '2026-05-25', notes: 'YubiKeys for engineering team' },
-  { id: 'tx-11', title: 'Domain Registrations (Cloudflare)', amount: 36.00, category: 'Infrastructure', type: 'expense', date: '2026-05-28', notes: 'Domain annual renewals' },
+// Seed data simulating realistic Gemini prompt compilation and agentic exploration token costs over time
+let mockTokenRecords: TokenCostRecord[] = [
+  { id: 'tok-1', repoName: 'facebook/react', modelName: 'gemini-4-argon', inputTokens: 52400, outputTokens: 8900, totalCostUsd: 0.2850, date: '2026-05-01', notes: 'Initial Agentic exploration & compilation' },
+  { id: 'tok-2', repoName: 'vercel/next.js', modelName: 'gemini-2.5-pro', inputTokens: 142000, outputTokens: 18500, totalCostUsd: 1.1450, date: '2026-05-03', notes: 'Server Actions & App Router optimization prompt' },
+  { id: 'tok-3', repoName: 'tailwindlabs/tailwindcss', modelName: 'gemini-3.8-flash', inputTokens: 18500, outputTokens: 3200, totalCostUsd: 0.0430, date: '2026-05-05', notes: 'Quick styling prompt generation' },
+  { id: 'tok-4', repoName: 'shadcn/ui', modelName: 'gemini-3.6-flash', inputTokens: 35000, outputTokens: 7100, totalCostUsd: 0.0980, date: '2026-05-08', notes: 'Component system refactor choreography' },
+  { id: 'tok-5', repoName: 'vercel/next.js', modelName: 'gemini-4-argon', inputTokens: 98000, outputTokens: 14200, totalCostUsd: 0.5420, date: '2026-05-12', notes: 'Multi-step agentic graph verification' },
+  { id: 'tok-6', repoName: 'facebook/react', modelName: 'gemini-3.5-flash-lite', inputTokens: 15000, outputTokens: 2500, totalCostUsd: 0.0220, date: '2026-05-15', notes: 'Quick Q&A codebase question (BTW mode)' },
+  { id: 'tok-7', repoName: 'vercel/next.js', modelName: 'gemini-2.5-pro', inputTokens: 165000, outputTokens: 21000, totalCostUsd: 1.3400, date: '2026-05-18', notes: 'Full deep architecture prompt compilation' },
+  { id: 'tok-8', repoName: 'supabase/supabase', modelName: 'gemini-4-argon', inputTokens: 74000, outputTokens: 11500, totalCostUsd: 0.4120, date: '2026-05-22', notes: 'Database schema & RLS policy generation' },
+  { id: 'tok-9', repoName: 'shadcn/ui', modelName: 'gemini-3.8-flash', inputTokens: 29000, outputTokens: 5400, totalCostUsd: 0.0680, date: '2026-05-25', notes: 'Idea mode feature ideation (77 ideas RICE)' },
+  { id: 'tok-10', repoName: 'vercel/next.js', modelName: 'gemini-4-argon', inputTokens: 112000, outputTokens: 16800, totalCostUsd: 0.6240, date: '2026-05-28', notes: 'Final production build & verification prompt' },
 ];
-
-function buildSummary(txList: Transaction[]): SpendingSummary {
-  const totalSpent = txList
-    .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalIncome = txList
-    .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const byCategory: Record<string, number> = {};
-  txList
-    .filter((t) => t.type === 'expense')
-    .forEach((t) => {
-      byCategory[t.category] = (byCategory[t.category] || 0) + t.amount;
-    });
-
-  // Aggregate daily expenses and incomes for chronological trend graph
-  const dailyMap: Record<string, { expense: number; income: number }> = {};
-  txList.forEach((t) => {
-    if (!dailyMap[t.date]) {
-      dailyMap[t.date] = { expense: 0, income: 0 };
-    }
-    if (t.type === 'expense') {
-      dailyMap[t.date].expense += t.amount;
-    } else {
-      dailyMap[t.date].income += t.amount;
-    }
-  });
-
-  const sortedDates = Object.keys(dailyMap).sort((a, b) => a.localeCompare(b));
-  const historicalTrend = sortedDates.map((date) => ({
-    date,
-    amount: dailyMap[date].expense,
-    expenseAmount: dailyMap[date].expense,
-    incomeAmount: dailyMap[date].income,
-  }));
-
-  return {
-    totalSpent: Math.round(totalSpent * 100) / 100,
-    totalIncome: Math.round(totalIncome * 100) / 100,
-    netBalance: Math.round((totalIncome - totalSpent) * 100) / 100,
-    byCategory,
-    historicalTrend,
-  };
-}
 
 export async function GET() {
   try {
-    const summary = buildSummary(mockTransactions);
+    const summary = calculateTokenCostSummary(mockTokenRecords);
     return NextResponse.json({
-      transactions: mockTransactions,
+      transactions: mockTokenRecords, // For backwards compatibility with any fetcher expecting transactions
+      tokenRecords: mockTokenRecords,
       summary,
     });
   } catch (err: unknown) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to fetch financial data' },
+      { error: err instanceof Error ? err.message : 'Failed to fetch token cost records' },
       { status: 500 }
     );
   }
@@ -90,7 +46,19 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const parsed = createTransactionSchema.safeParse(body);
+    
+    // Support either direct token cost payload or legacy transaction payload
+    const payload = {
+      repoName: body.repoName || body.title || 'Custom/Manual Prompt',
+      modelName: body.modelName || body.category || 'gemini-4-argon',
+      inputTokens: body.inputTokens !== undefined ? body.inputTokens : Math.round((body.amount || 10) * 1000),
+      outputTokens: body.outputTokens !== undefined ? body.outputTokens : Math.round((body.amount || 10) * 200),
+      totalCostUsd: body.totalCostUsd !== undefined ? body.totalCostUsd : (body.amount || 0.1),
+      date: body.date || new Date().toISOString().split('T')[0],
+      notes: body.notes || body.title,
+    };
+
+    const parsed = createTokenRecordSchema.safeParse(payload);
 
     if (!parsed.success) {
       return NextResponse.json(
@@ -102,31 +70,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { title, amount, category, type, date, notes } = parsed.data;
+    const { repoName, modelName, inputTokens, outputTokens, totalCostUsd, date, notes } = parsed.data;
 
-    const newTx: Transaction = {
-      id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      title,
-      amount,
-      category,
-      type,
+    const newRecord: TokenCostRecord = {
+      id: `tok-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      repoName,
+      modelName,
+      inputTokens,
+      outputTokens,
+      totalCostUsd,
       date,
       notes,
+      title: repoName,
+      amount: totalCostUsd,
+      category: modelName,
+      type: 'expense',
     };
 
-    // Prepend new transaction
-    mockTransactions.unshift(newTx);
-
-    const summary = buildSummary(mockTransactions);
+    mockTokenRecords.unshift(newRecord);
+    const summary = calculateTokenCostSummary(mockTokenRecords);
 
     return NextResponse.json({
       success: true,
-      transaction: newTx,
+      transaction: newRecord,
+      tokenRecord: newRecord,
       summary,
     });
   } catch (err: unknown) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to add transaction' },
+      { error: err instanceof Error ? err.message : 'Failed to add token cost record' },
       { status: 400 }
     );
   }
@@ -138,11 +110,11 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json({ error: 'Missing transaction id' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing token record id' }, { status: 400 });
     }
 
-    mockTransactions = mockTransactions.filter((t) => t.id !== id);
-    const summary = buildSummary(mockTransactions);
+    mockTokenRecords = mockTokenRecords.filter((r) => r.id !== id);
+    const summary = calculateTokenCostSummary(mockTokenRecords);
 
     return NextResponse.json({
       success: true,
@@ -151,7 +123,7 @@ export async function DELETE(req: NextRequest) {
     });
   } catch (err: unknown) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to delete transaction' },
+      { error: err instanceof Error ? err.message : 'Failed to delete token record' },
       { status: 500 }
     );
   }

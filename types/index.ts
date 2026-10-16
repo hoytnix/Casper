@@ -285,25 +285,40 @@ export type SSEEventType =
 
 export type TransactionType = 'expense' | 'income';
 
-export interface Transaction {
+export interface TokenCostRecord {
   id: string;
-  title: string;
-  amount: number;
-  category: string;
-  type: TransactionType;
+  repoName: string; // e.g. owner/repo or session title
+  modelName: string; // e.g. gemini-4-argon, gemini-2.5-pro, gemini-3.8-flash
+  inputTokens: number;
+  outputTokens: number;
+  totalCostUsd: number;
   date: string; // ISO string YYYY-MM-DD
   notes?: string;
+  title?: string;
+  amount?: number;
+  category?: string;
+  type?: TransactionType;
 }
 
-export interface SpendingSummary {
-  totalSpent: number;
-  totalIncome: number;
-  netBalance: number;
-  byCategory: Record<string, number>;
+export interface TokenCostSummary {
+  totalSpentUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalRuns: number;
+  byModel: Record<string, { cost: number; inputTokens: number; outputTokens: number; runs: number }>;
   historicalTrend: {
     date: string;
-    amount: number;
+    costUsd: number;
+    inputTokens: number;
+    outputTokens: number;
+    runs: number;
+    amount?: number;
     expenseAmount?: number;
     incomeAmount?: number;
   }[];
 }
+
+// Backwards compatibility aliases
+export type Transaction = TokenCostRecord;
+export type SpendingSummary = TokenCostSummary;
+

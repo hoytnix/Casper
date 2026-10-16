@@ -24,7 +24,7 @@ import {
 import Markdown from 'react-markdown';
 import { ChatMessage, IngestionProgress, IngestionSnapshot, Repo } from '@/types';
 import { StepLoader } from './StepLoader';
-import { formatCompiledPrompt, formatCostUsd, calculateModelCost } from '@/lib/utils';
+import { formatCompiledPrompt, extractSuggestedRefactors, formatCostUsd, calculateModelCost } from '@/lib/utils';
 
 interface ChatCompilerProps {
   repo: Repo;
@@ -267,7 +267,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
 
                   {msg.role === 'assistant' && !isHtmlCorrupted(msg.content) && (
                     <button
-                      onClick={() => handleCopy(msg.id, msg.content)}
+                      onClick={() => handleCopy(msg.id, formatCompiledPrompt(msg.content))}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-sm transition active:scale-95"
                       title="Copy raw compiled prompt for Antigravity"
                     >
@@ -420,30 +420,43 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                     {formatCompiledPrompt(msg.content)}
                   </Markdown>
 
-                  <div className="mt-6 pt-4 border-t border-white/[0.06] space-y-2.5">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>Suggested Follow-up Refactors</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {(msg.suggestedRefactors || msg.snapshotMeta?.suggestedRefactors || [
-                        "Refactor all data-fetching to leverage React Server Components with parallel Suspense boundaries and granular error boundaries.",
-                        "Implement rigorous Zod validation schemas across all Server Actions and Route Handlers with explicit type safety.",
-                        "Optimize middleware and routing rules for secure role-based access control and edge caching.",
-                        "Purge legacy client state by migrating global stores to searchParams/URL state and Server Actions.",
-                      ]).map((promptText, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setInputText(promptText)}
-                          className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-white/[0.06] hover:border-indigo-500/40 text-left text-xs text-slate-300 hover:text-white transition flex items-start gap-2.5 group cursor-pointer"
-                        >
-                          <span className="font-mono text-slate-500 text-[11px] mt-0.5">0{idx + 1}.</span>
-                          <span className="line-clamp-2 leading-relaxed">{promptText}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  {(() => {
+                    const extracted = extractSuggestedRefactors(msg.content);
+                    const realRefactors =
+                      msg.suggestedRefactors && msg.suggestedRefactors.length > 0
+                        ? msg.suggestedRefactors
+                        : msg.snapshotMeta?.suggestedRefactors && msg.snapshotMeta.suggestedRefactors.length > 0
+                        ? msg.snapshotMeta.suggestedRefactors
+                        : extracted.refactors && extracted.refactors.length > 0
+                        ? extracted.refactors
+                        : null;
+
+                    if (!realRefactors || realRefactors.length === 0) {
+                      return null;
+                    }
+
+                    return (
+                      <div className="mt-6 pt-4 border-t border-white/[0.06] space-y-2.5 animate-in fade-in duration-300">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Suggested Follow-up Refactors</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {realRefactors.map((promptText, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setInputText(promptText)}
+                              className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-white/[0.06] hover:border-indigo-500/40 text-left text-xs text-slate-300 hover:text-white transition flex items-start gap-2.5 group cursor-pointer shadow-sm active:scale-[0.99]"
+                            >
+                              <span className="font-mono text-slate-500 text-[11px] mt-0.5">0{idx + 1}.</span>
+                              <span className="line-clamp-2 leading-relaxed">{promptText}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

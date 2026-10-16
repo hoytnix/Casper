@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore } from 'react';
 import { Repo, AppSettings, ChatMessage, IngestionSnapshot, ModelConfig } from '@/types';
-import { formatCompiledPrompt } from '@/lib/utils';
+import { formatCompiledPrompt, extractSuggestedRefactors } from '@/lib/utils';
 import {
   saveSnapshotToDB,
   loadAllSnapshotsFromDB,
@@ -294,12 +294,18 @@ export function useRepoStore() {
                 '> ⚠️ **Upstream Gateway Interrupted (Warmup HTML Detected)**\n> The compilation request timed out upstream and returned the server startup page instead of Markdown.\n\nPlease click **Recompile Prompt** to execute with the optimized cascading pipeline.',
             };
           }
+          let suggestedRefactors = m.suggestedRefactors;
           if (m.role === 'assistant') {
-            content = formatCompiledPrompt(content);
+            const { cleanPrompt, refactors } = extractSuggestedRefactors(content);
+            content = formatCompiledPrompt(cleanPrompt);
+            if ((!suggestedRefactors || suggestedRefactors.length === 0) && refactors.length > 0) {
+              suggestedRefactors = refactors;
+            }
           }
           return {
             ...m,
             content,
+            suggestedRefactors,
           };
         });
         setChatHistory((prev) => ({ ...prev, [repoId]: sanitized }));
@@ -312,9 +318,24 @@ export function useRepoStore() {
   };
 
   const saveMessages = (repoId: string, messages: ChatMessage[]) => {
-    const formatted = messages.map((m) =>
-      m.role === 'assistant' ? { ...m, content: formatCompiledPrompt(m.content) } : m
-    );
+    const formatted = messages.map((m) => {
+      if (m.role === 'assistant') {
+        const { cleanPrompt, refactors } = extractSuggestedRefactors(m.content);
+        const content = formatCompiledPrompt(cleanPrompt);
+        const suggestedRefactors =
+          m.suggestedRefactors && m.suggestedRefactors.length > 0
+            ? m.suggestedRefactors
+            : refactors.length > 0
+            ? refactors
+            : undefined;
+        return {
+          ...m,
+          content,
+          suggestedRefactors,
+        };
+      }
+      return m;
+    });
     setChatHistory((prev) => ({ ...prev, [repoId]: formatted }));
     try {
       localStorage.setItem(STORAGE_KEYS.CHATS_PREFIX + repoId, JSON.stringify(formatted));

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Layers, Settings, Plus, ArrowLeft, TrendingUp } from 'lucide-react';
+import { Layers, Settings, Plus, ArrowLeft, Coins } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { Repo } from '@/types';
 
@@ -82,10 +82,10 @@ export const Header: React.FC<HeaderProps> = ({
           <Link
             href="/finance"
             className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-white/[0.08] bg-slate-900/60 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition whitespace-nowrap shrink-0"
-            title="Open Financial Tracker & Spending Analytics"
+            title="Open Token Costs Over Time & Analytics"
           >
-            <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden sm:inline">Finances</span>
+            <Coins className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">Token Costs</span>
           </Link>
 
           <PWAInstallButton />

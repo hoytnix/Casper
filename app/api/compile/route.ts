@@ -2,7 +2,7 @@ import { FunctionDeclaration, GoogleGenAI, Type } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { SourceFile, ExplorationStep } from '@/types';
 import { fetchFilesOnDemand, normalizeRepoPath } from '@/lib/github';
-import { calculateModelCost } from '@/lib/utils';
+import { calculateModelCost, extractSuggestedRefactors } from '@/lib/utils';
 
 const NEXTJS_EXPERT_SYSTEM_INSTRUCTION = `You are Next.js Expert, a Principal Architect and Autonomous Prompt Compiler specializing exclusively in Next.js 15+ App Router, React Server Components (RSC), Server Actions, Route Handlers, and modern TypeScript architecture.
 You have been given a Next.js repository structure and the developer's requested improvements.
@@ -56,30 +56,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMsg: string): Pr
 }
 
 function parseSuggestedRefactors(text: string): { cleanText: string; refactors: string[] } {
-  let cleanText = text;
-  let refactors: string[] = [];
-  const parts = text.split('---SUGGESTED_REFACTORS---');
-  if (parts.length > 1) {
-    cleanText = parts[0].trim();
-    try {
-      const jsonStr = parts[1].trim();
-      const parsed = JSON.parse(jsonStr);
-      if (Array.isArray(parsed)) {
-        refactors = parsed.filter((r) => typeof r === 'string').slice(0, 4);
-      }
-    } catch (e) {
-      console.warn('Failed to parse JSON refactors:', e);
-    }
-  }
-  if (refactors.length === 0) {
-    refactors = [
-      'Refactor data-fetching to leverage React Server Components with parallel Suspense boundaries.',
-      'Implement rigorous Zod validation schemas across all Server Actions and Route Handlers.',
-      'Optimize middleware and routing rules for secure role-based access control and edge caching.',
-      'Purge legacy client state by migrating global stores to searchParams/URL state and Server Actions.',
-    ];
-  }
-  return { cleanText, refactors };
+  const { cleanPrompt, refactors } = extractSuggestedRefactors(text);
+  return { cleanText: cleanPrompt, refactors };
 }
 
 const inspectFilesToolDeclaration: FunctionDeclaration = {
@@ -495,6 +473,36 @@ ${treeListing}
             let thinkingStarted = true;
             let thinkingEnded = false;
             let accumulatedPromptText = '';
+            let refactorDelimiterSeen = false;
+
+            const handlePromptText = (incomingText: string) => {
+              accumulatedPromptText += incomingText;
+              if (thinkingStarted && !thinkingEnded) {
+                thinkingEnded = true;
+                sendEvent({ type: 'thinking_end' });
+              }
+
+              if (refactorDelimiterSeen) {
+                // Suffix after delimiter has started, do not leak into prompt_chunk stream
+                return;
+              }
+
+              // Check if delimiter has appeared
+              const delimIndex = accumulatedPromptText.search(/---+[\s*]*SUGGESTED/i);
+              if (delimIndex !== -1) {
+                refactorDelimiterSeen = true;
+                const prevLength = accumulatedPromptText.length - incomingText.length;
+                if (delimIndex > prevLength) {
+                  const safeChunk = accumulatedPromptText.slice(prevLength, delimIndex);
+                  if (safeChunk) {
+                    sendEvent({ type: 'prompt_chunk', text: safeChunk });
+                  }
+                }
+                return;
+              }
+
+              sendEvent({ type: 'prompt_chunk', text: incomingText });
+            };
 
             const processChunkValue = (val: any) => {
               if (!val) return;
@@ -513,12 +521,7 @@ ${treeListing}
                 } else {
                   if (part.text) {
                     foundPromptText = true;
-                    accumulatedPromptText += part.text;
-                    if (thinkingStarted && !thinkingEnded) {
-                      thinkingEnded = true;
-                      sendEvent({ type: 'thinking_end' });
-                    }
-                    sendEvent({ type: 'prompt_chunk', text: part.text });
+                    handlePromptText(part.text);
                   }
                 }
               }
@@ -527,12 +530,7 @@ ${treeListing}
                 const directText = val.text || candidate?.text;
                 if (typeof directText === 'string' && directText.length > 0) {
                   foundPromptText = true;
-                  accumulatedPromptText += directText;
-                  if (thinkingStarted && !thinkingEnded) {
-                    thinkingEnded = true;
-                    sendEvent({ type: 'thinking_end' });
-                  }
-                  sendEvent({ type: 'prompt_chunk', text: directText });
+                  handlePromptText(directText);
                 }
               }
             };
@@ -556,6 +554,7 @@ ${treeListing}
             sendEvent({
               type: 'suggested_refactors',
               refactors,
+              cleanPrompt: cleanText,
             });
 
             const estimatedOutputTokens = Math.max(1, Math.ceil(cleanText.length / 4));
@@ -584,6 +583,7 @@ ${treeListing}
               outputTokens: estimatedOutputTokens,
               costDetails,
               suggestedRefactors: refactors,
+              cleanContent: cleanText,
             });
 
             controller.close();

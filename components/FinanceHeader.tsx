@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Layers, ArrowLeft, TrendingUp } from 'lucide-react';
+import { Layers, ArrowLeft, Cpu, Coins } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 
 export const FinanceHeader: React.FC = () => {
@@ -24,8 +24,8 @@ export const FinanceHeader: React.FC = () => {
           </Link>
           <span className="text-slate-600" aria-hidden="true">/</span>
           <div className="flex items-center gap-1.5 text-white font-semibold text-xs sm:text-sm">
-            <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Financial Tracker</span>
+            <Coins className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Token Costs Tracker</span>
           </div>
         </div>
 
@@ -36,11 +36,11 @@ export const FinanceHeader: React.FC = () => {
           </Link>
           <span className="text-slate-700" aria-hidden="true">&bull;</span>
           <span className="text-indigo-400 font-semibold whitespace-nowrap shrink-0">
-            Cash Flow &amp; Spending Analytics
+            Token Costs Over Time &amp; Analytics
           </span>
           <span className="text-slate-700" aria-hidden="true">&bull;</span>
           <span className="hover:text-slate-200 transition-colors whitespace-nowrap shrink-0">
-            RSC &amp; Server Actions
+            Gemini 4 Argon &amp; Cascading Models
           </span>
         </nav>
 
