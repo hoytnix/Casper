@@ -1,0 +1,8 @@
+{
+  "name": "Next.js Expert",
+  "description": "AI-Powered Next.js Architecture & Context Compiler for Next.js App Router, React Server Components, Server Actions, Route Handlers, and TypeScript.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
