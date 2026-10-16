@@ -27,6 +27,21 @@ export interface SourceFile {
   size: number;
 }
 
+export interface ModelPricingTier {
+  name: string;
+  inputCostPerMillion: number;
+  outputCostPerMillion: number;
+}
+
+export interface ModelCostDetails {
+  inputTokens: number;
+  outputTokens: number;
+  inputCostUsd: number;
+  outputCostUsd: number;
+  totalCostUsd: number;
+  modelName: string;
+}
+
 export interface IngestionSnapshot {
   owner: string;
   repo: string;
@@ -41,6 +56,12 @@ export interface IngestionSnapshot {
   files: SourceFile[];
   mode?: 'agentic' | 'full';
   explorationTrail?: ExplorationStep[];
+  toolTraces?: RouterToolTrace[];
+  costDetails?: ModelCostDetails;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalCostUsd?: number;
+  modelPricing?: ModelPricingTier;
 }
 
 export interface RouterToolTrace {
@@ -77,6 +98,7 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   thinkingContent?: string;
+  costDetails?: ModelCostDetails;
   snapshotMeta?: {
     filesCount: number;
     tokensCount: number;
@@ -90,16 +112,33 @@ export interface ChatMessage {
     routerLatencyMs?: number;
     toolTraces?: RouterToolTrace[];
     thinkingContent?: string;
+    costDetails?: ModelCostDetails;
+    inputTokens?: number;
+    outputTokens?: number;
+    totalCostUsd?: number;
+    modelPricing?: ModelPricingTier;
   };
 }
 
+export interface ModelConfig {
+  id: string;
+  name: string;
+  tag: string;
+  description: string;
+  enabled: boolean;
+  priority: number;
+  inputPricing?: string;
+  outputPricing?: string;
+}
+
 export interface AppSettings {
-  githubPat: string;
+  githubPat?: string;
   customApiKey?: string;
   preferredModel?: string;
   defaultMode?: 'agentic' | 'full';
   maxAgenticRounds?: number;
   routerEngine?: RouterEngineType;
+  models?: ModelConfig[];
 }
 
 export interface IngestionProgress {
@@ -122,6 +161,9 @@ export interface IngestionProgress {
   toolTraces?: RouterToolTrace[];
   thinkingContent?: string;
   thinkingLogs?: string[];
+  costDetails?: ModelCostDetails;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 export interface NextJsFileCard {

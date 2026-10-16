@@ -34,3 +34,119 @@ export function formatCompiledPrompt(content: string): string {
   return cleaned.trim();
 }
 
+/**
+ * Dynamic Model Pricing Tiers ($ per 1 Million Tokens)
+ * - Gemini 4 Argon: $2.00/M input, $10.00/M output ($4/M & $20/M after Nov 30, 2026)
+ * - Gemini 3.8 Flash: $0.75/M input, $3.75/M output
+ * - Gemini 3.5 Flash: $1.50/M input, $9.00/M output
+ * - Gemini 3.5 Flash-Lite: $0.30/M input, $2.50/M output
+ * - Gemini 3.6 Flash: $1.35/M input, $6.75/M output
+ */
+const isAfterNov30_2026 = typeof window !== 'undefined' || typeof process !== 'undefined'
+  ? new Date() > new Date('2026-11-30T23:59:59Z')
+  : false;
+
+export const MODEL_PRICING_TIERS: Record<string, { name: string; inputCostPerMillion: number; outputCostPerMillion: number }> = {
+  'gemini-4-argon': {
+    name: 'Gemini 4 Argon',
+    inputCostPerMillion: isAfterNov30_2026 ? 4.00 : 2.00,
+    outputCostPerMillion: isAfterNov30_2026 ? 20.00 : 10.00,
+  },
+  'gemini-3.8-flash': {
+    name: 'Gemini 3.8 Flash',
+    inputCostPerMillion: 0.75,
+    outputCostPerMillion: 3.75,
+  },
+  'gemini-3.5-flash': {
+    name: 'Gemini 3.5 Flash',
+    inputCostPerMillion: 1.50,
+    outputCostPerMillion: 9.00,
+  },
+  'gemini-3.5-flash-lite': {
+    name: 'Gemini 3.5 Flash-Lite',
+    inputCostPerMillion: 0.30,
+    outputCostPerMillion: 2.50,
+  },
+  'gemini-3.6-flash': {
+    name: 'Gemini 3.6 Flash',
+    inputCostPerMillion: 1.35,
+    outputCostPerMillion: 6.75,
+  },
+};
+
+/**
+ * Normalizes and resolves a given model string to its corresponding pricing tier.
+ */
+export function resolveModelPricing(modelName: string): { name: string; inputCostPerMillion: number; outputCostPerMillion: number } {
+  const norm = (modelName || '').toLowerCase().replace(/^(models\/)/, '');
+  if (norm.includes('argon') || norm.includes('gemini-4') || norm.includes('gemini-4-argon')) {
+    return MODEL_PRICING_TIERS['gemini-4-argon'];
+  }
+  if (norm.includes('3.5-flash-lite') || norm.includes('lite')) {
+    return MODEL_PRICING_TIERS['gemini-3.5-flash-lite'];
+  }
+  if (norm.includes('3.8-flash') || norm.includes('3.8')) {
+    return MODEL_PRICING_TIERS['gemini-3.8-flash'];
+  }
+  if (norm.includes('3.6-flash') || norm.includes('3.6')) {
+    return MODEL_PRICING_TIERS['gemini-3.6-flash'];
+  }
+  if (norm.includes('3.5-flash') || norm.includes('3.5')) {
+    return MODEL_PRICING_TIERS['gemini-3.5-flash'];
+  }
+  // Default to Gemini 4 Argon or Gemini 3.8 Flash
+  return MODEL_PRICING_TIERS['gemini-4-argon'];
+}
+
+/**
+ * Computes dynamic API costs based on model pricing tiers and token counts.
+ */
+export function calculateModelCost(
+  modelName: string,
+  inputTokens: number,
+  outputTokens: number
+): {
+  inputCost: number;
+  outputCost: number;
+  totalCost: number;
+  inputCostUsd: number;
+  outputCostUsd: number;
+  totalCostUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  modelName: string;
+} {
+  const pricing = resolveModelPricing(modelName);
+  const safeInput = Math.max(0, Math.round(inputTokens || 0));
+  const safeOutput = Math.max(0, Math.round(outputTokens || 0));
+
+  const inputCost = (safeInput / 1_000_000) * pricing.inputCostPerMillion;
+  const outputCost = (safeOutput / 1_000_000) * pricing.outputCostPerMillion;
+  const totalCost = inputCost + outputCost;
+
+  return {
+    inputCost,
+    outputCost,
+    totalCost,
+    inputCostUsd: inputCost,
+    outputCostUsd: outputCost,
+    totalCostUsd: totalCost,
+    inputTokens: safeInput,
+    outputTokens: safeOutput,
+    modelName: pricing.name,
+  };
+}
+
+/**
+ * Formats a USD cost value with clean precision (e.g. '$0.0014 USD').
+ */
+export function formatCostUsd(cost: number): string {
+  if (typeof cost !== 'number' || isNaN(cost) || cost <= 0) {
+    return '$0.0000 USD';
+  }
+  if (cost < 0.0001) {
+    return `$${cost.toFixed(6)} USD`;
+  }
+  return `$${cost.toFixed(4)} USD`;
+}
+

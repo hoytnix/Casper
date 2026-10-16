@@ -18,9 +18,12 @@ import {
   Network,
   Cpu,
   Layers,
+  Coins,
+  Receipt,
 } from 'lucide-react';
 import { IngestionSnapshot, RouterToolTrace } from '@/types';
 import { buildNextJsCodeGraph, NextJsCodeGraph } from '@/lib/nextjs-code-graph';
+import { formatCostUsd, calculateModelCost } from '@/lib/utils';
 
 interface ContextInspectorProps {
   isOpen: boolean;
@@ -172,7 +175,7 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
           </span>
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-400">Estimated Tokens:</span>
+          <span className="text-slate-400">Context Tokens:</span>
           <span className="font-mono font-bold text-violet-300">
             ~{snapshot ? snapshot.estimatedTokens.toLocaleString() : '0'} tokens
           </span>
@@ -183,6 +186,51 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
             {snapshot?.commitSha?.substring(0, 7) || 'None yet'}
           </span>
         </div>
+
+        {/* Dynamic Cumulative API Cost Panel */}
+        {(() => {
+          const cost =
+            snapshot?.costDetails ||
+            (snapshot && snapshot.estimatedTokens > 0
+              ? calculateModelCost(
+                  'gemini-3.8-flash',
+                  snapshot.estimatedTokens,
+                  Math.max(500, Math.ceil(snapshot.charCount / 4))
+                )
+              : null);
+
+          if (!cost) return null;
+
+          return (
+            <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 flex items-center gap-1.5">
+                  <Coins className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Est. API Cost:</span>
+                </span>
+                <span className="font-mono font-bold text-emerald-300">
+                  {formatCostUsd(cost.totalCostUsd)}
+                </span>
+              </div>
+
+              {/* In/Out Breakdown */}
+              <div className="p-2 rounded-lg bg-slate-950/80 border border-emerald-500/20 text-[10px] font-mono space-y-1">
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Input ({cost.inputTokens.toLocaleString()} tok):</span>
+                  <span className="text-emerald-400 font-semibold">${cost.inputCostUsd.toFixed(6)}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Output ({cost.outputTokens.toLocaleString()} tok):</span>
+                  <span className="text-emerald-400 font-semibold">${cost.outputCostUsd.toFixed(6)}</span>
+                </div>
+                <div className="pt-1 border-t border-slate-800 flex items-center justify-between text-slate-300 text-[10px]">
+                  <span>Tier:</span>
+                  <span className="text-indigo-300 font-sans">{cost.modelName}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Local Agent Unix Trace Collapsible Drawer */}

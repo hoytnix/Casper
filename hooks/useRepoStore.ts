@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useSyncExternalStore } from 'react';
-import { Repo, AppSettings, ChatMessage, IngestionSnapshot } from '@/types';
+import { Repo, AppSettings, ChatMessage, IngestionSnapshot, ModelConfig } from '@/types';
 import { formatCompiledPrompt } from '@/lib/utils';
 
 const STORAGE_KEYS = {
@@ -50,13 +50,67 @@ const DEFAULT_REPOS: Repo[] = [
   },
 ];
 
+export const DEFAULT_MODELS: ModelConfig[] = [
+  {
+    id: 'gemini-4-argon',
+    name: 'Gemini 4 Argon',
+    tag: 'gemini-4-argon',
+    description: '$2/M input, $10/M output ($4/M & $20/M after Nov 30, 2026)',
+    enabled: true,
+    priority: 1,
+    inputPricing: '$2 per million tokens ($4 after Nov 30, 2026)',
+    outputPricing: '$10 per million tokens ($20 after Nov 30, 2026)',
+  },
+  {
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    tag: 'gemini-3.6-flash',
+    description: 'Primary flagship high-throughput model',
+    enabled: true,
+    priority: 2,
+    inputPricing: '$1.35 per million tokens',
+    outputPricing: '$6.75 per million tokens',
+  },
+  {
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    tag: 'gemini-3.5-flash',
+    description: 'First fallback tier (Rock-solid stability)',
+    enabled: true,
+    priority: 3,
+    inputPricing: '$1.50 per million tokens',
+    outputPricing: '$9.00 per million tokens',
+  },
+  {
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    tag: 'gemini-3.8-flash',
+    description: 'High reasoning fallback tier',
+    enabled: true,
+    priority: 4,
+    inputPricing: '$0.75 per million tokens',
+    outputPricing: '$3.75 per million tokens',
+  },
+  {
+    id: 'gemini-3.5-flash-lite',
+    name: 'Gemini 3.5 Flash-Lite',
+    tag: 'gemini-3.5-flash-lite',
+    description: 'Ultra-lean 500ms fallback tier',
+    enabled: true,
+    priority: 5,
+    inputPricing: '$0.30 per million tokens',
+    outputPricing: '$2.50 per million tokens',
+  },
+];
+
 const DEFAULT_SETTINGS: AppSettings = {
   githubPat: '',
   customApiKey: '',
-  preferredModel: 'gemini-3.6-flash',
+  preferredModel: 'gemini-4-argon',
   defaultMode: 'agentic',
   maxAgenticRounds: 3,
   routerEngine: 'auto',
+  models: DEFAULT_MODELS,
 };
 
 const emptySubscribe = () => () => {};
@@ -93,7 +147,23 @@ export function useRepoStore() {
     if (typeof window === 'undefined') return DEFAULT_SETTINGS;
     try {
       const storedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      if (storedSettings) return JSON.parse(storedSettings);
+      if (storedSettings) {
+        const parsed = JSON.parse(storedSettings);
+        let models: ModelConfig[] = parsed.models && Array.isArray(parsed.models) && parsed.models.length > 0
+          ? parsed.models
+          : DEFAULT_MODELS;
+
+        // Ensure gemini-4-argon is present in existing stored settings
+        if (!models.some((m) => m.id === 'gemini-4-argon' || m.tag === 'gemini-4-argon')) {
+          models = [DEFAULT_MODELS[0], ...models];
+        }
+
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          models,
+        };
+      }
     } catch {
       // fallback
     }

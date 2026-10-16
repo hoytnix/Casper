@@ -12,9 +12,14 @@ import {
   Compass,
   Layers,
   Loader2,
+  ChevronUp,
+  ChevronDown,
+  Sparkles,
+  RotateCcw,
 } from 'lucide-react';
-import { AppSettings, RouterEngineType } from '@/types';
+import { AppSettings, RouterEngineType, ModelConfig } from '@/types';
 import { checkGeminiNanoAvailability, warmUpLocalContextRouter } from '@/lib/local-context-router';
+import { DEFAULT_MODELS } from '@/hooks/useRepoStore';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -22,13 +27,6 @@ interface SettingsModalProps {
   settings: AppSettings;
   onSave: (newSettings: Partial<AppSettings>) => void;
 }
-
-const CASCADING_ORDER = [
-  { step: 1, name: 'Gemini 3.6 Flash', tag: 'gemini-3.6-flash', desc: 'Primary flagship high-throughput model (Verified)' },
-  { step: 2, name: 'Gemini 3.5 Flash', tag: 'gemini-3.5-flash', desc: 'First fallback tier (Rock-solid stability)' },
-  { step: 3, name: 'Gemini 3.5 Flash-Lite', tag: 'gemini-3.5-flash-lite', desc: 'Second fallback tier (Ultra-lean 500ms)' },
-  { step: 4, name: 'Gemini 3.8 Flash', tag: 'gemini-3.8-flash', desc: 'Third fallback tier (High reasoning with timeout)' },
-];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -49,6 +47,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isWarmingUp, setIsWarmingUp] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
 
+  const [models, setModels] = useState<ModelConfig[]>(() => {
+    if (settings.models && settings.models.length > 0) {
+      let list = [...settings.models];
+      if (!list.some((m) => m.id === 'gemini-4-argon' || m.tag === 'gemini-4-argon')) {
+        list = [DEFAULT_MODELS[0], ...list];
+      }
+      return list.sort((a, b) => a.priority - b.priority);
+    }
+    return DEFAULT_MODELS;
+  });
+
+  const moveModel = (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= models.length) return;
+    const next = [...models];
+    const [moved] = next.splice(index, 1);
+    next.splice(targetIndex, 0, moved);
+    const updated = next.map((m, idx) => ({ ...m, priority: idx + 1 }));
+    setModels(updated);
+  };
+
+  const toggleModel = (id: string) => {
+    const enabledCount = models.filter((m) => m.enabled).length;
+    setModels((prev) =>
+      prev.map((m) => {
+        if (m.id === id) {
+          if (m.enabled && enabledCount <= 1) {
+            return m; // Keep at least one enabled model
+          }
+          return { ...m, enabled: !m.enabled };
+        }
+        return m;
+      })
+    );
+  };
+
+  const handleResetModels = () => {
+    setModels(DEFAULT_MODELS);
+  };
+
   React.useEffect(() => {
     checkGeminiNanoAvailability().then((st) => setNanoStatus(st));
   }, []);
@@ -62,6 +100,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       defaultMode,
       maxAgenticRounds: maxRounds,
       routerEngine,
+      models,
+      preferredModel: models.find((m) => m.enabled)?.tag || 'gemini-4-argon',
     });
     setShowSavedToast(true);
     setTimeout(() => {
@@ -240,34 +280,135 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* Cascading Fallback Strategy Info */}
-          <div className="space-y-2 pt-2 border-t border-slate-800">
+          {/* Model Priority & Fallback Waterfall */}
+          <div className="space-y-3 pt-2 border-t border-slate-800">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
                 <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-                Active Model Pipeline (Cascading Fallback)
+                Model Priority &amp; Fallback Waterfall
               </label>
-              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                2 Full Passes (8 attempts max)
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetModels}
+                  className="text-[10px] text-slate-400 hover:text-indigo-300 flex items-center gap-1 transition"
+                  title="Reset to default priority sequence"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset</span>
+                </button>
+                <span className="text-[10px] font-mono text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                  Includes Gemini 4 Argon
+                </span>
+              </div>
             </div>
 
-            <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-3 space-y-1.5 text-xs font-mono">
-              {CASCADING_ORDER.map((item) => (
-                <div key={item.step} className="flex items-center justify-between py-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="w-4 h-4 rounded-full bg-slate-800 text-indigo-400 text-[10px] flex items-center justify-center font-bold">
-                      {item.step}
-                    </span>
-                    <span className="text-slate-200 font-semibold">{item.name}</span>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Use arrows to adjust priority ordering or toggle models on/off. If a model encounters quota or transient errors, the compiler cascades to the next active model in sequence.
+            </p>
+
+            <div className="space-y-2">
+              {models.map((model, idx) => (
+                <div
+                  key={model.id}
+                  className={`p-3 rounded-xl border transition-all ${
+                    model.enabled
+                      ? model.id === 'gemini-4-argon'
+                        ? 'bg-indigo-950/40 border-indigo-500/40'
+                        : 'bg-slate-900/90 border-slate-800'
+                      : 'bg-slate-950/60 border-slate-900 opacity-60'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {/* Priority Badge */}
+                      <span
+                        className={`w-6 h-6 rounded-lg text-xs font-mono font-bold flex items-center justify-center flex-shrink-0 ${
+                          model.enabled
+                            ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
+                            : 'bg-slate-800 text-slate-500 border border-slate-700/50'
+                        }`}
+                      >
+                        #{idx + 1}
+                      </span>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className={`text-xs font-semibold ${
+                              model.enabled ? 'text-white' : 'text-slate-400 line-through'
+                            }`}
+                          >
+                            {model.name}
+                          </span>
+                          <span className="font-mono text-[10px] text-indigo-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
+                            {model.tag}
+                          </span>
+                          {model.id === 'gemini-4-argon' && (
+                            <span className="text-[9px] font-semibold bg-gradient-to-r from-amber-500/20 to-indigo-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                              <span>Argon Tier</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Pricing details */}
+                        {model.id === 'gemini-4-argon' ? (
+                          <div className="mt-1 text-[10px] font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-500/20 px-2 py-0.5 rounded-md inline-block">
+                            $2/M input, $10/M output ($4/M &amp; $20/M after Nov 30, 2026)
+                          </div>
+                        ) : model.inputPricing && model.outputPricing ? (
+                          <div className="mt-1 text-[10px] font-mono text-slate-400">
+                            {model.inputPricing} in &bull; {model.outputPricing} out
+                          </div>
+                        ) : null}
+
+                        {model.description && model.id !== 'gemini-4-argon' && (
+                          <p className="text-[11px] text-slate-400 mt-0.5">{model.description}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Controls: Reorder buttons & Enable toggle */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <div className="flex flex-col gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => moveModel(idx, 'up')}
+                          disabled={idx === 0}
+                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 disabled:hover:bg-slate-800 transition"
+                          title="Move Up in Priority"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveModel(idx, 'down')}
+                          disabled={idx === models.length - 1}
+                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 disabled:hover:bg-slate-800 transition"
+                          title="Move Down in Priority"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleModel(model.id)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium font-mono border transition ${
+                          model.enabled
+                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25'
+                            : 'bg-slate-800/80 border-slate-700 text-slate-500 hover:text-slate-400'
+                        }`}
+                        title={model.enabled ? 'Model Active in Cascade' : 'Model Disabled'}
+                      >
+                        {model.enabled ? 'ENABLED' : 'OFF'}
+                      </button>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-slate-500">{item.tag}</span>
                 </div>
               ))}
             </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              If an attempt fails due to quota or transient error, the compiler seamlessly cascades to the next model. If all 4 fail, it retries the sequence one more time before terminating.
-            </p>
           </div>
 
           {/* GitHub PAT Section */}

@@ -10,8 +10,10 @@ import {
   Compass,
   FileCode,
   Terminal,
+  Coins,
 } from 'lucide-react';
 import { IngestionProgress } from '@/types';
+import { formatCostUsd } from '@/lib/utils';
 
 interface StepLoaderProps {
   progress: IngestionProgress;
@@ -40,11 +42,22 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
               : 'Repository Ingestion Pipeline'}
           </h4>
         </div>
-        {progress.currentRound && progress.maxRounds && (
-          <span className="text-[11px] font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
-            Round {progress.currentRound} of {progress.maxRounds}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {progress.inputTokens && (
+            <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+              <Coins className="w-3 h-3 text-emerald-400" />
+              <span>~{progress.inputTokens.toLocaleString()} tokens in</span>
+              {progress.costDetails && (
+                <span className="text-emerald-400 font-bold">&bull; {formatCostUsd(progress.costDetails.totalCostUsd)}</span>
+              )}
+            </span>
+          )}
+          {progress.currentRound && progress.maxRounds && (
+            <span className="text-[11px] font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+              Round {progress.currentRound} of {progress.maxRounds}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Main Status Callout */}

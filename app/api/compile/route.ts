@@ -2,6 +2,7 @@ import { FunctionDeclaration, GoogleGenAI, Type } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { SourceFile, ExplorationStep } from '@/types';
 import { fetchFilesOnDemand, normalizeRepoPath } from '@/lib/github';
+import { calculateModelCost } from '@/lib/utils';
 
 const NEXTJS_EXPERT_SYSTEM_INSTRUCTION = `You are Next.js Expert, a Principal Architect and Autonomous Prompt Compiler specializing exclusively in Next.js 15+ App Router, React Server Components (RSC), Server Actions, Route Handlers, and modern TypeScript architecture.
 You have been given a Next.js repository structure and the developer's requested improvements.
@@ -28,8 +29,10 @@ STRUCTURE OF THE COMPILED PROMPT:
 4. **Dead Code & Redundancy Purge**: Explicit cleanup of unused imports, redundant client directives, obsolete types, or legacy routes caused by the changes.
 5. **Verification & Invariant Checks**: Exact terminal commands (\`npm run build\`, \`npm run lint\`) and runtime behavioral checks to verify completion.`;
 
-// Cascading Fallback Strategy: Prioritizing user-requested model order
-const CASCADING_MODELS = [
+// Cascading Fallback Strategy: Incorporating Gemini 4 Argon as primary tier
+const DEFAULT_CASCADING_MODELS = [
+  'gemini-4-argon',
+  'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-3.8-flash',
   'gemini-3.5-flash-lite',
@@ -83,7 +86,19 @@ export async function POST(req: NextRequest) {
       maxRounds = 3,
       repositoryContext, // For fallback legacy full mode
       investigatedFiles: clientInvestigatedFiles, // Pre-routed files from client
+      models: customModels,
     } = body;
+
+    const rawCustomModels = customModels || body.customModels;
+    const modelsToUse: string[] =
+      Array.isArray(rawCustomModels) && rawCustomModels.length > 0
+        ? rawCustomModels
+            .filter((m: any) => m && m.enabled !== false && (m.tag || m.id))
+            .sort((a: any, b: any) => (a.priority ?? 99) - (b.priority ?? 99))
+            .map((m: any) => (m.tag || m.id).trim())
+        : [...DEFAULT_CASCADING_MODELS];
+
+    const cascadingModels = modelsToUse.length > 0 ? modelsToUse : [...DEFAULT_CASCADING_MODELS];
 
     if (!improvementPrompt || typeof improvementPrompt !== 'string') {
       return NextResponse.json(
@@ -184,7 +199,7 @@ INSTRUCTIONS FOR AGENTIC EXPLORATION:
                 let exploreResult: unknown = null;
 
                 for (let pass = 1; pass <= 2; pass++) {
-                  for (const model of CASCADING_MODELS) {
+                  for (const model of cascadingModels) {
                     try {
                       const response = await withTimeout(
                         ai.models.generateContent({
@@ -330,14 +345,6 @@ INSTRUCTIONS FOR AGENTIC EXPLORATION:
             // PHASE 2: SYNTHESIZE & STREAM PROMPT
             // ==========================================
             const exploredFilesList = Array.from(exploredFilesMap.values());
-            sendEvent({
-              type: 'compiling_start',
-              message: `Synthesizing architectural prompt from ${exploredFilesList.length} investigated files...`,
-              investigatedFiles: exploredFilesList.map((f) => f.path),
-              model: CASCADING_MODELS[0],
-              pass: 1,
-              trail: explorationTrail,
-            });
 
             let focusedContext = `### REPOSITORY SNAPSHOT (AGENTICALLY TARGETED)
 Target Repository: ${owner}/${repo}
@@ -361,6 +368,21 @@ ${treeListing}
 
             const finalPromptPayload = `Here is the agentically discovered repository context:\n\n${focusedContext}\n\n==========================================\nDEVELOPER'S REQUESTED IMPROVEMENTS:\n${improvementPrompt}\n\nCompile the Next.js Expert Autonomous Execution Prompt strictly following your system instruction.`;
 
+            const estimatedInputTokens = Math.max(
+              1,
+              Math.ceil((NEXTJS_EXPERT_SYSTEM_INSTRUCTION.length + finalPromptPayload.length) / 4)
+            );
+
+            sendEvent({
+              type: 'compiling_start',
+              message: `Synthesizing architectural prompt from ${exploredFilesList.length} investigated files...`,
+              investigatedFiles: exploredFilesList.map((f) => f.path),
+              model: cascadingModels[0],
+              pass: 1,
+              trail: explorationTrail,
+              inputTokens: estimatedInputTokens,
+            });
+
             let streamResponse: any = null;
             let streamModel = '';
             let streamPass = 1;
@@ -369,7 +391,7 @@ ${treeListing}
             const thinkingSummaries = body.thinkingSummaries || 'auto';
 
             for (let pass = 1; pass <= 2; pass++) {
-              for (const model of CASCADING_MODELS) {
+              for (const model of cascadingModels) {
                 // Try first with thinkingConfig, then fallback without thinkingConfig if unsupported
                 for (const useThinking of [true, false]) {
                   try {
@@ -433,6 +455,7 @@ ${treeListing}
 
             let thinkingStarted = true;
             let thinkingEnded = false;
+            let accumulatedPromptText = '';
 
             const processChunkValue = (val: any) => {
               if (!val) return;
@@ -451,6 +474,7 @@ ${treeListing}
                 } else {
                   if (part.text) {
                     foundPromptText = true;
+                    accumulatedPromptText += part.text;
                     if (thinkingStarted && !thinkingEnded) {
                       thinkingEnded = true;
                       sendEvent({ type: 'thinking_end' });
@@ -464,6 +488,7 @@ ${treeListing}
                 const directText = val.text || candidate?.text;
                 if (typeof directText === 'string' && directText.length > 0) {
                   foundPromptText = true;
+                  accumulatedPromptText += directText;
                   if (thinkingStarted && !thinkingEnded) {
                     thinkingEnded = true;
                     sendEvent({ type: 'thinking_end' });
@@ -487,6 +512,17 @@ ${treeListing}
               sendEvent({ type: 'thinking_end' });
             }
 
+            const estimatedOutputTokens = Math.max(1, Math.ceil(accumulatedPromptText.length / 4));
+            const costCalculation = calculateModelCost(streamModel, estimatedInputTokens, estimatedOutputTokens);
+            const costDetails = {
+              inputTokens: estimatedInputTokens,
+              outputTokens: estimatedOutputTokens,
+              inputCostUsd: costCalculation.inputCostUsd,
+              outputCostUsd: costCalculation.outputCostUsd,
+              totalCostUsd: costCalculation.totalCostUsd,
+              modelName: costCalculation.modelName,
+            };
+
             sendEvent({
               type: 'done',
               model: streamModel,
@@ -498,6 +534,9 @@ ${treeListing}
                 content: f.content,
               })),
               trail: explorationTrail,
+              inputTokens: estimatedInputTokens,
+              outputTokens: estimatedOutputTokens,
+              costDetails,
             });
 
             controller.close();
@@ -545,8 +584,8 @@ ${treeListing}
     const MAX_PASSES = 2;
 
     for (let pass = 1; pass <= MAX_PASSES; pass++) {
-      for (let i = 0; i < CASCADING_MODELS.length; i++) {
-        const modelName = CASCADING_MODELS[i];
+      for (let i = 0; i < cascadingModels.length; i++) {
+        const modelName = cascadingModels[i];
         try {
           const responseStream = await withTimeout(
             ai.models.generateContentStream({
@@ -592,11 +631,25 @@ ${treeListing}
     if (!activeStreamIterator && firstChunkText === null) {
       return NextResponse.json(
         {
-          error: `All ${CASCADING_MODELS.length} Gemini models in the cascading fallback strategy failed after ${MAX_PASSES} full passes.\n\nFailures:\n${failureLog.join('\n')}`,
+          error: `All ${cascadingModels.length} Gemini models in the cascading fallback strategy failed after ${MAX_PASSES} full passes.\n\nFailures:\n${failureLog.join('\n')}`,
         },
         { status: 502 }
       );
     }
+
+    const estimatedClassicInputTokens = Math.max(
+      1,
+      Math.ceil((NEXTJS_EXPERT_SYSTEM_INSTRUCTION.length + userContent.length) / 4)
+    );
+    const estimatedClassicOutputTokens = Math.max(
+      1,
+      Math.ceil((firstChunkText || '').length / 4)
+    );
+    const classicCost = calculateModelCost(
+      successfulModel,
+      estimatedClassicInputTokens,
+      estimatedClassicOutputTokens
+    );
 
     const readable = new ReadableStream({
       async start(controller) {
@@ -629,6 +682,9 @@ ${treeListing}
         'X-Content-Type-Options': 'nosniff',
         'X-Model-Used': successfulModel,
         'X-Fallback-Pass': String(successfulPass),
+        'X-Input-Tokens': String(estimatedClassicInputTokens),
+        'X-Output-Tokens': String(estimatedClassicOutputTokens),
+        'X-Total-Cost-Usd': String(classicCost.totalCostUsd),
       },
     });
   } catch (err: unknown) {

@@ -10,6 +10,7 @@ import {
   Loader2,
   Compass,
   Layers,
+  Coins,
 } from 'lucide-react';
 import {
   Repo,
@@ -19,6 +20,7 @@ import {
   AppSettings,
   ExplorationStep,
   SourceFile,
+  ModelCostDetails,
 } from '@/types';
 import { ContextInspector } from './ContextInspector';
 import { ChatCompiler } from './ChatCompiler';
@@ -30,6 +32,7 @@ import {
   assembleRepositoryContextPayload,
 } from '@/lib/github';
 import { warmUpLocalContextRouter, routeNextJsContext } from '@/lib/local-context-router';
+import { formatCostUsd, calculateModelCost, resolveModelPricing } from '@/lib/utils';
 
 interface RepoWorkspaceProps {
   repo: Repo;
@@ -263,6 +266,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           customApiKey: settings.customApiKey,
           githubPat: settings.githubPat,
           routerEngine: routerEngineUsed,
+          models: settings.models,
         }),
       });
 
@@ -300,8 +304,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
         let investigatedFiles: SourceFile[] = [];
         let modelUsed = '';
         let fallbackPass = 1;
-
         let accumulatedThinking = '';
+        let serverInputTokens = 3500;
+        let finalCostDetails: ModelCostDetails | null = null;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -346,11 +351,21 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               } else if (evt.type === 'compiling_start') {
                 modelUsed = evt.model || modelUsed;
                 fallbackPass = evt.pass || fallbackPass;
+                if (evt.inputTokens) {
+                  serverInputTokens = evt.inputTokens;
+                }
+                const initialCost = calculateModelCost(
+                  modelUsed || 'gemini-3.8-flash',
+                  serverInputTokens,
+                  50
+                );
                 setProgress((prev) => ({
                   ...prev,
                   step: 'compiling_prompt',
                   message: `Synthesizing Antigravity prompt from ${investigatedCount} locked context files...`,
                   explorationTrail: [...currentTrail],
+                  inputTokens: serverInputTokens,
+                  costDetails: initialCost,
                 }));
               } else if (evt.type === 'thinking_start') {
                 setProgress((prev) => ({
@@ -372,6 +387,20 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                 }));
               } else if (evt.type === 'prompt_chunk') {
                 accumulatedContent += evt.text || '';
+                const currentOutputTokens = Math.max(1, Math.ceil(accumulatedContent.length / 4));
+                const dynamicCost = calculateModelCost(
+                  modelUsed || 'gemini-3.8-flash',
+                  serverInputTokens,
+                  currentOutputTokens
+                );
+                finalCostDetails = dynamicCost;
+
+                setProgress((prev) => ({
+                  ...prev,
+                  outputTokens: currentOutputTokens,
+                  costDetails: dynamicCost,
+                }));
+
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantMsgId
@@ -379,15 +408,21 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                           ...m,
                           content: accumulatedContent,
                           thinkingContent: accumulatedThinking || undefined,
+                          costDetails: dynamicCost,
                           snapshotMeta: {
                             ...m.snapshotMeta!,
                             filesCount: investigatedCount,
-                            tokensCount: Math.ceil(accumulatedContent.length / 4),
+                            tokensCount: currentOutputTokens,
                             modelUsed,
                             fallbackPass,
                             mode: 'agentic' as const,
                             explorationTrail: currentTrail,
                             thinkingContent: accumulatedThinking || undefined,
+                            costDetails: dynamicCost,
+                            inputTokens: serverInputTokens,
+                            outputTokens: currentOutputTokens,
+                            totalCostUsd: dynamicCost.totalCostUsd,
+                            modelPricing: resolveModelPricing(modelUsed || dynamicCost.modelName),
                           },
                         }
                       : m
@@ -396,6 +431,18 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               } else if (evt.type === 'done') {
                 modelUsed = evt.model || modelUsed;
                 fallbackPass = evt.pass || fallbackPass;
+                if (evt.inputTokens) serverInputTokens = evt.inputTokens;
+                const finalOutputTokens =
+                  evt.outputTokens || Math.max(1, Math.ceil(accumulatedContent.length / 4));
+                if (evt.costDetails) {
+                  finalCostDetails = evt.costDetails;
+                } else {
+                  finalCostDetails = calculateModelCost(
+                    modelUsed || 'gemini-3.8-flash',
+                    serverInputTokens,
+                    finalOutputTokens
+                  );
+                }
                 if (evt.investigatedFiles && Array.isArray(evt.investigatedFiles)) {
                   investigatedFiles = evt.investigatedFiles;
                 }
@@ -408,7 +455,16 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           }
         }
 
-        // Save Snapshot
+        const finalTokensCount = Math.max(1, Math.ceil(accumulatedContent.length / 4));
+        const calculatedCost =
+          finalCostDetails ||
+          calculateModelCost(
+            modelUsed || 'gemini-3.8-flash',
+            serverInputTokens,
+            finalTokensCount
+          );
+
+        // Save Snapshot with complete cost metrics
         const agentSnapshot: IngestionSnapshot = {
           owner: repo.owner,
           repo: repo.repo,
@@ -416,7 +472,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           commitSha,
           totalTreeBlobs: allBlobPaths.length,
           includedFilesCount: downloadedInvestigated.length,
-          estimatedTokens: Math.ceil(accumulatedContent.length / 4),
+          estimatedTokens: finalTokensCount,
           charCount: accumulatedContent.length,
           timestamp: Date.now(),
           treeListing,
@@ -424,7 +480,12 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           mode: 'agentic' as const,
           explorationTrail: [explorationStepRecord],
           toolTraces,
-        } as any;
+          costDetails: calculatedCost,
+          inputTokens: calculatedCost.inputTokens,
+          outputTokens: calculatedCost.outputTokens,
+          totalCostUsd: calculatedCost.totalCostUsd,
+          modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
+        };
 
         saveSnapshot(repo.id, agentSnapshot);
         onUpdateRepo(repo.id, { lastSyncedAt: Date.now() });
@@ -435,15 +496,21 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                 ...m,
                 content: accumulatedContent,
                 thinkingContent: accumulatedThinking || undefined,
+                costDetails: calculatedCost,
                 snapshotMeta: {
                   ...m.snapshotMeta!,
                   filesCount: downloadedInvestigated.length,
-                  tokensCount: Math.ceil(accumulatedContent.length / 4),
+                  tokensCount: finalTokensCount,
                   modelUsed,
                   fallbackPass,
                   mode: 'agentic' as const,
                   explorationTrail: [explorationStepRecord],
                   thinkingContent: accumulatedThinking || undefined,
+                  costDetails: calculatedCost,
+                  inputTokens: calculatedCost.inputTokens,
+                  outputTokens: calculatedCost.outputTokens,
+                  totalCostUsd: calculatedCost.totalCostUsd,
+                  modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
                 },
               }
             : m
@@ -454,6 +521,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           step: 'completed',
           message: 'Compilation complete',
           explorationTrail: [explorationStepRecord],
+          costDetails: calculatedCost,
+          inputTokens: calculatedCost.inputTokens,
+          outputTokens: calculatedCost.outputTokens,
         });
       } catch (err: unknown) {
       console.error('Compilation failed:', err);
@@ -595,6 +665,19 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               <span>Full Repo</span>
             </button>
           </div>
+
+          {/* Dynamic API Cost Badge */}
+          {snapshot?.costDetails && (
+            <div
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 font-mono text-xs shadow-sm cursor-help"
+              title={`Latest Snapshot API Cost: ${formatCostUsd(snapshot.costDetails.totalCostUsd)}\n• Model: ${snapshot.costDetails.modelName}\n• Input: ${snapshot.costDetails.inputTokens.toLocaleString()} tokens ($${snapshot.costDetails.inputCostUsd.toFixed(6)})\n• Output: ${snapshot.costDetails.outputTokens.toLocaleString()} tokens ($${snapshot.costDetails.outputCostUsd.toFixed(6)})`}
+            >
+              <Coins className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+              <span className="font-semibold text-emerald-200">
+                {formatCostUsd(snapshot.costDetails.totalCostUsd)}
+              </span>
+            </div>
+          )}
 
           {getStatusBadge()}
 

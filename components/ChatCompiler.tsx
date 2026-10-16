@@ -16,11 +16,13 @@ import {
   Compass,
   CheckCircle2,
   AlertTriangle,
+  Coins,
+  Receipt,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { ChatMessage, IngestionProgress, IngestionSnapshot, Repo } from '@/types';
 import { StepLoader } from './StepLoader';
-import { formatCompiledPrompt } from '@/lib/utils';
+import { formatCompiledPrompt, formatCostUsd, calculateModelCost } from '@/lib/utils';
 
 interface ChatCompilerProps {
   repo: Repo;
@@ -208,14 +210,64 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                         </span>
                       )}
                       {msg.snapshotMeta.modelUsed && (
-                        <span className="font-mono text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded flex items-center gap-1">
-                          <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                        <span className="font-mono text-[10px] bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-1.5 py-0.5 rounded flex items-center gap-1">
+                          <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
                           <span>{msg.snapshotMeta.modelUsed}</span>
                           {msg.snapshotMeta.fallbackPass && msg.snapshotMeta.fallbackPass > 1 && (
                             <span className="text-[9px] text-amber-300 font-bold">(Pass {msg.snapshotMeta.fallbackPass})</span>
                           )}
                         </span>
                       )}
+                      {(() => {
+                        const cost =
+                          msg.costDetails ||
+                          msg.snapshotMeta?.costDetails ||
+                          (msg.role === 'assistant' && msg.snapshotMeta?.modelUsed
+                            ? calculateModelCost(
+                                msg.snapshotMeta.modelUsed,
+                                msg.snapshotMeta.inputTokens || 3500,
+                                msg.snapshotMeta.outputTokens || Math.max(1, Math.ceil(msg.content.length / 4))
+                              )
+                            : undefined);
+                        if (!cost) return null;
+
+                        return (
+                          <div
+                            className="group/cost relative flex items-center gap-1 font-mono text-[10px] bg-emerald-950/60 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md shadow-sm cursor-help transition hover:bg-emerald-900/50 hover:border-emerald-400/50"
+                          >
+                            <Coins className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                            <span className="font-semibold text-emerald-200">
+                              {formatCostUsd(cost.totalCostUsd)}
+                            </span>
+                            <span className="text-[9px] text-emerald-400/80 hidden sm:inline">
+                              ({cost.inputTokens.toLocaleString()} in / {cost.outputTokens.toLocaleString()} out)
+                            </span>
+
+                            {/* Cost Breakdown Tooltip */}
+                            <div className="absolute left-0 top-full mt-1.5 hidden group-hover/cost:flex flex-col z-50 w-64 p-2.5 rounded-xl bg-slate-950 border border-emerald-500/40 text-slate-200 text-[11px] shadow-2xl backdrop-blur-md space-y-1.5 pointer-events-none">
+                              <div className="flex items-center justify-between pb-1 border-b border-slate-800 text-emerald-300 font-semibold">
+                                <span className="flex items-center gap-1">
+                                  <Receipt className="w-3 h-3" />
+                                  <span>Dynamic API Cost</span>
+                                </span>
+                                <span className="text-[10px] text-slate-400">{cost.modelName}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-slate-300 font-mono">
+                                <span>Input ({cost.inputTokens.toLocaleString()} tok):</span>
+                                <span className="text-emerald-400">${cost.inputCostUsd.toFixed(6)}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-slate-300 font-mono">
+                                <span>Output ({cost.outputTokens.toLocaleString()} tok):</span>
+                                <span className="text-emerald-400">${cost.outputCostUsd.toFixed(6)}</span>
+                              </div>
+                              <div className="pt-1 border-t border-slate-800/80 flex items-center justify-between font-bold text-xs text-white">
+                                <span>Total Estimated Cost:</span>
+                                <span className="text-emerald-300 font-mono">{formatCostUsd(cost.totalCostUsd)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
