@@ -283,5 +283,27 @@ export type SSEEventType =
   | 'error' 
   | 'done';
 
+export type TransactionType = 'expense' | 'income';
 
+export interface Transaction {
+  id: string;
+  title: string;
+  amount: number;
+  category: string;
+  type: TransactionType;
+  date: string; // ISO string YYYY-MM-DD
+  notes?: string;
+}
 
+export interface SpendingSummary {
+  totalSpent: number;
+  totalIncome: number;
+  netBalance: number;
+  byCategory: Record<string, number>;
+  historicalTrend: {
+    date: string;
+    amount: number;
+    expenseAmount?: number;
+    incomeAmount?: number;
+  }[];
+}

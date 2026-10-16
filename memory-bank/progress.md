@@ -17,11 +17,15 @@
 - [x] Configurable Request & Stream Timeout Setting
 - [x] Input Context Tokens & Metric Separation
 - [x] AST-Aware Incremental Repo Caching & Delta Ingestion
-- [x] **Dynamic Context-Aware Architectural Refactor Recommendations**:
-  - Extended API route (`/app/api/compile/route.ts`) and system instruction to generate live AI refactor recommendations (`---SUGGESTED_REFACTORS---`).
-  - Added SSE event `suggested_refactors` and updated `ChatMessage` / `snapshotMeta` types (`/types/index.ts`).
-  - Replaced static prompts and follow-ups in `/components/ChatCompiler.tsx` and `/components/RepoWorkspace.tsx` with dynamic repo/snapshot-aware recommendations.
+- [x] Dynamic Context-Aware Architectural Refactor Recommendations
+- [x] **Financial Tracker & Spending Analytics Engine**:
+  - Added `Transaction`, `TransactionType`, and `SpendingSummary` interfaces to `/types/index.ts`.
+  - Created `/app/api/finance/route.ts` supporting `GET`, `POST`, and `DELETE` with Zod input validation and summary aggregation.
+  - Created `/app/finance/page.tsx` React Server Component entry point.
+  - Created `/components/FinanceWorkspace.tsx` featuring interactive SVG spending-over-time graphs, category distribution bars, metric cards, date range filtering (7d/30d/90d/all), search, and ledger tables.
+  - Created `/components/AddTransactionModal.tsx` modal with Zod schema validation and type/category presets.
+  - Created pure calculation helpers and unit tests in `/lib/finance-calculations.ts` and `/lib/finance-calculations.test.ts`.
+  - Added bidirectional navigation in `/components/Header.tsx` and `/components/FinanceHeader.tsx`.
 
 ## Current Status
-Production-Ready. Dynamic context-aware architectural recommendations and live Gemini-generated follow-up refactors are fully operational, tested, and verified with successful production builds and zero lint errors.
-
+Production-Ready. Financial Tracker and Spending Analytics engine is fully operational, thoroughly tested with unit tests (`node --test`), validated against live user journeys via browser automation, compiled cleanly, and with zero ESLint errors.

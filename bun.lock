@@ -9,7 +9,6 @@
         "@hookform/resolvers": "^5.2.1",
         "@huggingface/transformers": "^4.3.1",
         "@mlc-ai/web-llm": "^0.2.86",
-        "@nowpaymentsio/nowpayments-sdk-nodejs": "^0.3.0",
         "autoprefixer": "^10.4.21",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
@@ -21,6 +20,7 @@
         "react-dom": "^19.2.1",
         "react-markdown": "^10.1.0",
         "tailwind-merge": "^3.3.1",
+        "zod": "^4.6.7",
       },
       "devDependencies": {
         "@tailwindcss/postcss": "4.1.11",
@@ -287,8 +287,6 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@nolyfill/is-core-module": ["@nolyfill/is-core-module@1.0.39", "", {}, "sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA=="],
-
-    "@nowpaymentsio/nowpayments-sdk-nodejs": ["@nowpaymentsio/nowpayments-sdk-nodejs@0.3.0", "", {}, "sha512-YIJEl6OoPymCCc2/IlEx+5YWUFPKIGQ+0s1T8bEDc4JYQwanbVzYtIMqSOdgDD6LDg3AG3iIbAR7gNDWJn8n5w=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.1", "", {}, "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q=="],
 
