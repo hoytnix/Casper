@@ -1,4 +1,4 @@
-export type IngestionMode = 'agentic' | 'full' | 'idea' | 'btw';
+export type IngestionMode = 'agentic' | 'idea' | 'btw';
 
 export interface VRINEScore {
   value: number; // 1-10

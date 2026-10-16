@@ -343,8 +343,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
       // ==========================================
       // IN-BROWSER AGENTIC CONTEXT ROUTER (Gemini Nano + Arctic-Embed-XS)
       // ==========================================
-      if (mode === 'agentic') {
-        setProgress({
+      setProgress({
           step: 'agentic_exploring',
           message: 'Running local in-browser context router (Gemini Nano / Arctic-Embed-XS)...',
           currentRound: 1,
@@ -391,7 +390,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           step: 'agentic_exploring',
           message: `Running local Unix VFS agent router (${routerEngineUsed})...`,
           currentRound: 1,
-          maxRounds: 1,
+          maxRounds: settings.maxAgenticRounds || 3,
           explorationTrail: [],
           toolTraces,
         });
@@ -795,222 +794,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             inputTokens: calculatedCost.inputTokens,
             outputTokens: calculatedCost.outputTokens,
           });
-      } else {
-        // ==========================================
-        // FULL INGESTION, IDEA MODE, OR BTW MODE
-        // ==========================================
-        let downloadedFiles: SourceFile[] = [];
-        if (deltaFetched && activeFiles.length > 0) {
-          downloadedFiles = activeFiles;
-          setProgress({
-            step: 'downloading_files',
-            message: `Loaded ${activeFiles.length} files from AST delta cache instantly...`,
-          });
-        } else {
-          setProgress({
-            step: 'downloading_files',
-            message: mode === 'idea' ? 'Downloading files for AI Ideation & RICE scoring...' : mode === 'btw' ? 'Downloading files for codebase Q&A...' : 'Downloading full repository files in memory...',
-          });
 
-          const filesToDownload = eligibleTreeItems.slice(0, 120);
-          downloadedFiles = await downloadSourceFiles(
-            repo.owner,
-            repo.repo,
-            repo.branch,
-            filesToDownload,
-            settings.githubPat,
-            (loaded, total) => {
-              setProgress({
-                step: 'downloading_files',
-                message: `Downloaded ${loaded} of ${total} source files...`,
-              });
-            }
-          );
-          activeFiles = downloadedFiles;
-        }
-
-        const assembled = assembleRepositoryContextPayload(
-          allBlobPaths,
-          downloadedFiles,
-          repo.owner,
-          repo.repo,
-          repo.branch,
-          commitSha
-        );
-
-        const assistantMsgId = `assistant-${Date.now()}`;
-        currentAssistantMsgId = assistantMsgId;
-        const assistantMsg: ChatMessage = {
-          id: assistantMsgId,
-          role: 'assistant',
-          content: '',
-          timestamp: Date.now(),
-          snapshotMeta: {
-            filesCount: downloadedFiles.length,
-            tokensCount: assembled.estimatedTokens,
-            inputTokensCount: assembled.estimatedTokens,
-            commitSha,
-            branch: repo.branch,
-            mode,
-          },
-        };
-
-        const messagesWithAssistantPlaceholder = [
-          ...updatedMessagesWithUser,
-          assistantMsg,
-        ];
-        setMessages(messagesWithAssistantPlaceholder);
-
-        setProgress({
-          step: 'compiling_prompt',
-          message: mode === 'idea' ? 'Synthesizing top 7 innovative ideas with RICE & VRIN-EO scores...' : mode === 'btw' ? 'Analyzing codebase and formulating answer...' : 'Synthesizing full Antigravity execution prompt via Gemini...',
-        });
-
-        const response = await fetch('/api/compile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mode,
-            owner: repo.owner,
-            repo: repo.repo,
-            branch: repo.branch,
-            treeListing: assembled.treeListing,
-            repositoryContext: assembled.payload,
-            improvementPrompt: promptText,
-            customApiKey: settings.customApiKey,
-            githubPat: settings.githubPat,
-            models: settings.models,
-            requestTimeout: settings.requestTimeout || 60,
-          }),
-        });
-
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('text/html')) {
-          const rawHtml = await response.text().catch(() => '');
-          if (rawHtml.includes('Starting Server') || rawHtml.includes('warmup') || rawHtml.includes('<!doctype')) {
-            throw new Error('Server gateway warmup screen intercepted. The upstream request timed out. Please try compiling again.');
-          }
-          throw new Error(`Compiler returned HTML (${response.status}) instead of a stream.`);
-        }
-
-        if (!response.ok) {
-          const errorJson = await response.json().catch(() => null);
-          throw new Error(errorJson?.error || `Server error (${response.status})`);
-        }
-
-        if (!response.body) {
-          throw new Error('No streaming response body received');
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let accumulatedContent = '';
-        let serverModelUsed = response.headers.get('X-Model-Used') || 'gemini-3.8-flash';
-        let serverFallbackPass = parseInt(response.headers.get('X-Fallback-Pass') || '1', 10);
-        let serverInputTokens = parseInt(response.headers.get('X-Input-Tokens') || String(assembled.estimatedTokens), 10);
-        let finalCostDetails: ModelCostDetails | null = null;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const text = decoder.decode(value, { stream: true });
-          accumulatedContent += text;
-          const cleanDisplayPrompt = extractSuggestedRefactors(accumulatedContent).cleanPrompt;
-          const currentOutputTokens = Math.max(1, Math.ceil(accumulatedContent.length / 4));
-          const dynamicCost = calculateModelCost(serverModelUsed, serverInputTokens, currentOutputTokens);
-          finalCostDetails = dynamicCost;
-
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
-                ? {
-                    ...m,
-                    content: cleanDisplayPrompt,
-                    costDetails: dynamicCost,
-                    snapshotMeta: {
-                      ...m.snapshotMeta!,
-                      filesCount: downloadedFiles.length,
-                      tokensCount: serverInputTokens,
-                      inputTokensCount: serverInputTokens,
-                      outputTokensCount: currentOutputTokens,
-                      modelUsed: serverModelUsed,
-                      fallbackPass: serverFallbackPass,
-                      mode,
-                      inputTokens: serverInputTokens,
-                      outputTokens: currentOutputTokens,
-                      totalCostUsd: dynamicCost.totalCostUsd,
-                      modelPricing: resolveModelPricing(serverModelUsed),
-                    },
-                  }
-                : m
-            )
-          );
-        }
-
-        const { cleanPrompt: finalClassicCleanContent, refactors: classicParsedRefactors } = extractSuggestedRefactors(accumulatedContent);
-        accumulatedContent = finalClassicCleanContent;
-
-        const finalTokensCount = Math.max(1, Math.ceil(accumulatedContent.length / 4));
-        const calculatedCost = finalCostDetails || calculateModelCost(serverModelUsed, serverInputTokens, finalTokensCount);
-
-        const snapshotRecord: IngestionSnapshot = {
-          owner: repo.owner,
-          repo: repo.repo,
-          branch: repo.branch,
-          commitSha,
-          totalTreeBlobs: allBlobPaths.length,
-          includedFilesCount: downloadedFiles.length,
-          estimatedTokens: serverInputTokens,
-          charCount: assembled.charCount,
-          inputTokens: serverInputTokens,
-          outputTokens: finalTokensCount,
-          timestamp: Date.now(),
-          treeListing: assembled.treeListing,
-          files: downloadedFiles,
-          mode,
-          costDetails: calculatedCost,
-          totalCostUsd: calculatedCost.totalCostUsd,
-          modelPricing: resolveModelPricing(serverModelUsed),
-        };
-
-        saveSnapshot(repo.id, snapshotRecord);
-        onUpdateRepo(repo.id, { lastSyncedAt: Date.now() });
-
-        const finalMessages: ChatMessage[] = messagesWithAssistantPlaceholder.map((m) =>
-          m.id === assistantMsgId
-            ? {
-                ...m,
-                content: finalClassicCleanContent,
-                costDetails: calculatedCost,
-                suggestedRefactors: classicParsedRefactors.length > 0 ? classicParsedRefactors : undefined,
-                snapshotMeta: {
-                  ...m.snapshotMeta!,
-                  filesCount: downloadedFiles.length,
-                  tokensCount: serverInputTokens,
-                  inputTokensCount: serverInputTokens,
-                  outputTokensCount: finalTokensCount,
-                  modelUsed: serverModelUsed,
-                  fallbackPass: serverFallbackPass,
-                  mode,
-                  inputTokens: calculatedCost.inputTokens,
-                  outputTokens: calculatedCost.outputTokens,
-                  totalCostUsd: calculatedCost.totalCostUsd,
-                  modelPricing: resolveModelPricing(serverModelUsed),
-                  suggestedRefactors: classicParsedRefactors.length > 0 ? classicParsedRefactors : undefined,
-                },
-              }
-            : m
-        );
-        saveMessages(repo.id, finalMessages);
-
-        setProgress({
-          step: 'completed',
-          message: 'Compilation complete',
-          costDetails: calculatedCost,
-          inputTokens: calculatedCost.inputTokens,
-          outputTokens: calculatedCost.outputTokens,
-        });
-      }
       } catch (err: unknown) {
       console.error('Compilation failed:', err);
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -1165,23 +949,10 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                   ? 'bg-indigo-600 text-white font-medium shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
-              title="Agentic Sequential Exploration"
+              title="Prompt: Agentic Sequential Exploration & Compilation"
             >
               <Compass className="w-3 h-3" />
-              <span>Agentic</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleToggleMode('full')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition whitespace-nowrap ${
-                mode === 'full'
-                  ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Full Repository Ingestion"
-            >
-              <Layers className="w-3 h-3" />
-              <span>Full</span>
+              <span>Prompt</span>
             </button>
             <button
               type="button"

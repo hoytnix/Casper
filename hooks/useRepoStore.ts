@@ -165,6 +165,10 @@ export function useRepoStore() {
           models = [DEFAULT_MODELS[0], ...models];
         }
 
+        if (parsed.defaultMode === 'full') {
+          parsed.defaultMode = 'agentic';
+        }
+
         return {
           ...DEFAULT_SETTINGS,
           ...parsed,

@@ -166,7 +166,7 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
         <div className="flex items-center justify-between text-xs">
           <span className="text-slate-400">Strategy:</span>
           <span className="font-mono font-semibold text-indigo-300">
-            {isAgentic ? 'Graph-Aware Unix VFS' : 'Full Ingestion'}
+            Graph-Aware Agentic VFS
           </span>
         </div>
         <div className="flex items-center justify-between text-xs">

@@ -147,9 +147,9 @@ export async function POST(req: NextRequest) {
     const encoder = new TextEncoder();
 
     // ==========================================
-    // AGENTIC SEQUENTIAL EXPLORATION MODE
+    // UNIFIED AGENTIC EXPLORATION & STREAMING PIPELINE
     // ==========================================
-    if (mode === 'agentic' && owner && repo && treeListing) {
+    if (owner && repo && treeListing) {
       const readable = new ReadableStream({
         async start(controller) {
           const sendEvent = (eventData: Record<string, unknown>) => {
@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
           try {
             sendEvent({
               type: 'agent_start',
-              message: 'Initializing agentic exploration loop...',
+              message: `Initializing agentic exploration loop (Mode: ${mode})...`,
               owner,
               repo,
               branch,
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
             const exploredFilesMap = new Map<string, SourceFile>();
             const explorationTrail: ExplorationStep[] = [];
 
-            // If client already pre-routed/investigated files, use them directly!
+            // Seed with client investigated files if provided
             if (Array.isArray(clientInvestigatedFiles) && clientInvestigatedFiles.length > 0) {
               for (const f of clientInvestigatedFiles) {
                 if (f && f.path && typeof f.content === 'string') {
@@ -177,162 +177,164 @@ export async function POST(req: NextRequest) {
               }
             }
 
-            // If no pre-investigated files provided by client, run server-side exploration
-            if (exploredFilesMap.size === 0) {
-              const conversationContents: any[] = [
-                {
-                  role: 'user',
-                  parts: [
-                    {
-                      text: `Target Repository: ${owner}/${repo} (branch: ${branch})
+            const alreadyInspectedList = Array.from(exploredFilesMap.keys());
+            const conversationContents: any[] = [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    text: `Target Repository: ${owner}/${repo} (branch: ${branch})
 
 === FULL DIRECTORY TREE SKELETON ===
 ${treeListing}
 === END DIRECTORY TREE ===
 
-DEVELOPER'S REQUESTED IMPROVEMENTS:
+${alreadyInspectedList.length > 0 ? `ALREADY INSPECTED FILES (ROUND 0 SEED):\n${alreadyInspectedList.map(p => `• @[/${p}]`).join('\n')}\n` : ''}
+
+DEVELOPER'S REQUESTED IMPROVEMENTS / GOAL (Mode: ${mode}):
 ${improvementPrompt}
 
-INSTRUCTIONS FOR AGENTIC EXPLORATION:
-1. Analyze the directory tree skeleton and determine the initial suspect files that must be read to implement the requested improvements.
-2. Call the 'inspect_files' tool with the exact relative paths (e.g., ["src/app.ts", "lib/auth.ts"]) and your technical reasoning.
-3. If you have already inspected all required files, do not call 'inspect_files'; simply answer "READY" so the compiler can stream the final prompt.`,
-                    },
-                  ],
-                },
-              ];
+INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
+1. In each round, analyze the codebase call graph and import closure.
+2. In Round 1, inspect primary suspect files (pages, route handlers, core components).
+3. In subsequent rounds (Rounds 2 to ${maxRounds}), investigate secondary dependencies: imported utility functions, custom hooks, Zod validation schemas, state stores, or parent layout boundaries.
+4. Call 'inspect_files' with the exact relative paths (e.g., ["lib/utils.ts", "app/layout.tsx"]) and technical reasoning.
+5. Only if NO additional dependencies, schemas, or layouts are needed to satisfy the request, output "READY".`,
+                  },
+                ],
+              },
+            ];
 
-              let activeModel = '';
-              let activePass = 1;
+            let activeModel = '';
+            let activePass = 1;
 
-              for (let round = 1; round <= maxRounds; round++) {
+            for (let round = 1; round <= maxRounds; round++) {
+              sendEvent({
+                type: 'agent_round',
+                round,
+                maxRounds,
+                message: `Round ${round} of ${maxRounds}: Agent reasoning over repository blast radius...`,
+              });
+
+              let exploreResult: unknown = null;
+
+              for (let pass = 1; pass <= 2; pass++) {
+                for (const model of cascadingModels) {
+                  try {
+                    const response = await withTimeout(
+                      ai.models.generateContent({
+                        model,
+                        contents: conversationContents,
+                        config: {
+                          systemInstruction:
+                            'You are Next.js Expert, a Principal Architectural Cartographer investigating a Next.js codebase. Use the inspect_files tool to examine source code files before producing architectural prompts.',
+                          tools: [{ functionDeclarations: [inspectFilesToolDeclaration] }],
+                          temperature: 0.1,
+                        },
+                      }),
+                      timeoutMs,
+                      `Model ${model} exploration timed out after ${requestTimeout}s`
+                    );
+                    exploreResult = response;
+                    activeModel = model;
+                    activePass = pass;
+                    break;
+                  } catch (err) {
+                    console.warn(`[Agentic Cascade] Round ${round} Model ${model} failed in Pass ${pass}:`, err);
+                  }
+                }
+                if (exploreResult) break;
+              }
+
+              if (!exploreResult) {
+                break;
+              }
+
+              const exploreResp = exploreResult as any;
+              const functionCalls = exploreResp?.functionCalls || exploreResp?.candidates?.[0]?.content?.parts?.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
+              const inspectCall = Array.isArray(functionCalls) ? functionCalls[0] : functionCalls;
+
+              if (inspectCall && (inspectCall.args || inspectCall.filePaths)) {
+                const args = inspectCall.args || inspectCall;
+                const requestedPaths: string[] = Array.isArray(args.filePaths)
+                  ? (args.filePaths as string[])
+                  : [];
+                const reason: string = (args.reason as string) || 'Suspected file in blast radius';
+
+                const newPathsToFetch = requestedPaths
+                  .map(normalizeRepoPath)
+                  .filter((p) => p && !exploredFilesMap.has(p));
+
+                if (newPathsToFetch.length === 0) {
+                  break;
+                }
+
                 sendEvent({
-                  type: 'agent_round',
+                  type: 'agent_inspect',
                   round,
-                  maxRounds,
-                  message: `Round ${round} of ${maxRounds}: Agent reasoning over repository blast radius...`,
+                  paths: newPathsToFetch,
+                  reason,
                 });
 
-                let exploreResult: unknown = null;
+                const downloaded = await fetchFilesOnDemand(
+                  owner,
+                  repo,
+                  branch,
+                  newPathsToFetch,
+                  githubPat
+                );
 
-                for (let pass = 1; pass <= 2; pass++) {
-                  for (const model of cascadingModels) {
-                    try {
-                      const response = await withTimeout(
-                        ai.models.generateContent({
-                          model,
-                          contents: conversationContents,
-                          config: {
-                            systemInstruction:
-                              'You are Next.js Expert, a Principal Architectural Cartographer investigating a Next.js codebase. Use the inspect_files tool to examine source code files before producing architectural prompts.',
-                            tools: [{ functionDeclarations: [inspectFilesToolDeclaration] }],
-                            temperature: 0.1,
-                          },
-                        }),
-                        timeoutMs,
-                        `Model ${model} exploration timed out after ${requestTimeout}s`
-                      );
-                      exploreResult = response;
-                      activeModel = model;
-                      activePass = pass;
-                      break;
-                    } catch (err) {
-                      console.warn(`[Agentic Cascade] Round ${round} Model ${model} failed in Pass ${pass}:`, err);
-                    }
-                  }
-                  if (exploreResult) break;
+                for (const file of downloaded) {
+                  exploredFilesMap.set(file.path, file);
                 }
 
-                if (!exploreResult) {
-                  break;
+                const stepRecord: ExplorationStep = {
+                  id: `step-${round}-${Date.now()}`,
+                  round,
+                  paths: newPathsToFetch,
+                  reason,
+                  timestamp: Date.now(),
+                  status: 'completed',
+                  filesSummary: downloaded.map((f) => ({ path: f.path, size: f.size })),
+                };
+                explorationTrail.push(stepRecord);
+
+                sendEvent({
+                  type: 'agent_files_loaded',
+                  round,
+                  step: stepRecord,
+                  totalInvestigated: exploredFilesMap.size,
+                });
+
+                const candidateContent = exploreResp.candidates?.[0]?.content;
+                if (candidateContent) {
+                  conversationContents.push(candidateContent);
                 }
 
-                const exploreResp = exploreResult as any;
-                const functionCalls = exploreResp?.functionCalls || exploreResp?.candidates?.[0]?.content?.parts?.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
-                const inspectCall = Array.isArray(functionCalls) ? functionCalls[0] : functionCalls;
+                const filesPayload = downloaded
+                  .map(
+                    (f) =>
+                      `--- FILE: @[/${f.path}] ---\n${f.content.slice(0, 15000)}\n--- END FILE ---`
+                  )
+                  .join('\n\n');
 
-                if (inspectCall && (inspectCall.args || inspectCall.filePaths)) {
-                  const args = inspectCall.args || inspectCall;
-                  const requestedPaths: string[] = Array.isArray(args.filePaths)
-                    ? (args.filePaths as string[])
-                    : [];
-                  const reason: string = (args.reason as string) || 'Suspected file in blast radius';
-
-                  const newPathsToFetch = requestedPaths
-                    .map(normalizeRepoPath)
-                    .filter((p) => p && !exploredFilesMap.has(p));
-
-                  if (newPathsToFetch.length === 0) {
-                    break;
-                  }
-
-                  sendEvent({
-                    type: 'agent_inspect',
-                    round,
-                    paths: newPathsToFetch,
-                    reason,
-                  });
-
-                  const downloaded = await fetchFilesOnDemand(
-                    owner,
-                    repo,
-                    branch,
-                    newPathsToFetch,
-                    githubPat
-                  );
-
-                  for (const file of downloaded) {
-                    exploredFilesMap.set(file.path, file);
-                  }
-
-                  const stepRecord: ExplorationStep = {
-                    id: `step-${round}-${Date.now()}`,
-                    round,
-                    paths: newPathsToFetch,
-                    reason,
-                    timestamp: Date.now(),
-                    status: 'completed',
-                    filesSummary: downloaded.map((f) => ({ path: f.path, size: f.size })),
-                  };
-                  explorationTrail.push(stepRecord);
-
-                  sendEvent({
-                    type: 'agent_files_loaded',
-                    round,
-                    step: stepRecord,
-                    totalInvestigated: exploredFilesMap.size,
-                  });
-
-                  const candidateContent = exploreResp.candidates?.[0]?.content;
-                  if (candidateContent) {
-                    conversationContents.push(candidateContent);
-                  }
-
-                  const filesPayload = downloaded
-                    .map(
-                      (f) =>
-                        `--- FILE: @[/${f.path}] ---\n${f.content.slice(0, 15000)}\n--- END FILE ---`
-                    )
-                    .join('\n\n');
-
-                  const callId = (inspectCall as { id?: string }).id;
-                  conversationContents.push({
-                    role: 'tool',
-                    parts: [
-                      {
-                        functionResponse: {
-                          name: 'inspect_files',
-                          ...(callId ? { id: callId } : {}),
-                          response: {
-                            output: `Successfully loaded ${downloaded.length} files:\n${filesPayload}`,
-                          },
+                const callId = (inspectCall as { id?: string }).id;
+                conversationContents.push({
+                  role: 'tool',
+                  parts: [
+                    {
+                      functionResponse: {
+                        name: 'inspect_files',
+                        ...(callId ? { id: callId } : {}),
+                        response: {
+                          output: `Successfully loaded ${downloaded.length} files:\n${filesPayload}`,
                         },
                       },
-                    ],
-                  });
-                } else {
-                  break;
-                }
+                    },
+                  ],
+                });
+              } else {
+                break;
               }
             }
 
@@ -360,7 +362,15 @@ INSTRUCTIONS FOR AGENTIC EXPLORATION:
 
             // ==========================================
             // PHASE 2: SYNTHESIZE & STREAM PROMPT
+            // Select system instruction based on mode
             // ==========================================
+            let systemInstructionToUse = NEXTJS_EXPERT_SYSTEM_INSTRUCTION;
+            if (mode === 'idea') {
+              systemInstructionToUse = IDEA_MODE_SYSTEM_INSTRUCTION;
+            } else if (mode === 'btw') {
+              systemInstructionToUse = BTW_MODE_SYSTEM_INSTRUCTION;
+            }
+
             const exploredFilesList = Array.from(exploredFilesMap.values());
 
             let focusedContext = `### REPOSITORY SNAPSHOT (AGENTICALLY TARGETED)
@@ -383,16 +393,22 @@ ${treeListing}
             }
             focusedContext += '\n=== END TARGETED SOURCE CODE ===\n';
 
-            const finalPromptPayload = `Here is the agentically discovered repository context:\n\n${focusedContext}\n\n==========================================\nDEVELOPER'S REQUESTED IMPROVEMENTS:\n${improvementPrompt}\n\nCompile the Next.js Expert Autonomous Execution Prompt strictly following your system instruction.`;
+            let finalPromptPayload = `Here is the agentically discovered repository context:\n\n${focusedContext}\n\n==========================================\nDEVELOPER'S REQUESTED IMPROVEMENTS / GOAL (Mode: ${mode}):\n${improvementPrompt}\n\nCompile the response strictly following your system instruction.`;
+
+            if (mode === 'idea') {
+              finalPromptPayload = `Here is the agentically discovered repository context for feature ideation and RICE / VRIN-EO evaluation:\n\n${focusedContext}\n\n==========================================\nDEVELOPER FOCUS OR GOAL:\n${improvementPrompt}\n\nSynthesize 77 innovative feature ideas and present the top 7 highest-ranked ideas according to your system instruction.`;
+            } else if (mode === 'btw') {
+              finalPromptPayload = `Here is the agentically discovered repository context:\n\n${focusedContext}\n\n==========================================\nDEVELOPER'S QUESTION:\n${improvementPrompt}\n\nAnswer the question directly and authoritatively with @[/path/to/file.ext] citations according to your system instruction.`;
+            }
 
             const estimatedInputTokens = Math.max(
               1,
-              Math.ceil((NEXTJS_EXPERT_SYSTEM_INSTRUCTION.length + finalPromptPayload.length) / 4)
+              Math.ceil((systemInstructionToUse.length + finalPromptPayload.length) / 4)
             );
 
             sendEvent({
               type: 'compiling_start',
-              message: `Synthesizing architectural prompt from ${exploredFilesList.length} investigated files...`,
+              message: `Synthesizing architectural response from ${exploredFilesList.length} investigated files (Mode: ${mode})...`,
               investigatedFiles: exploredFilesList.map((f) => f.path),
               model: cascadingModels[0],
               pass: 1,
@@ -409,12 +425,11 @@ ${treeListing}
 
             for (let pass = 1; pass <= 2; pass++) {
               for (const model of cascadingModels) {
-                // Try first with thinkingConfig, then fallback without thinkingConfig if unsupported
                 for (const useThinking of [true, false]) {
                   try {
                     const config: any = {
-                      systemInstruction: NEXTJS_EXPERT_SYSTEM_INSTRUCTION,
-                      temperature: 0.2,
+                      systemInstruction: systemInstructionToUse,
+                      temperature: mode === 'idea' ? 0.4 : 0.2,
                     };
                     if (useThinking) {
                       config.thinkingConfig = {
@@ -459,7 +474,7 @@ ${treeListing}
             if (!streamResponse) {
               sendEvent({
                 type: 'error',
-                error: 'All cascading models failed to stream the final prompt after 2 passes.',
+                error: 'All cascading models failed to stream the response after 2 passes.',
               });
               controller.close();
               return;
@@ -483,11 +498,9 @@ ${treeListing}
               }
 
               if (refactorDelimiterSeen) {
-                // Suffix after delimiter has started, do not leak into prompt_chunk stream
                 return;
               }
 
-              // Check if delimiter has appeared
               const delimIndex = accumulatedPromptText.search(/---+[\s*]*SUGGESTED/i);
               if (delimIndex !== -1) {
                 refactorDelimiterSeen = true;
@@ -607,142 +620,7 @@ ${treeListing}
       });
     }
 
-    // ==========================================
-    // CLASSIC FULL REPOSITORY INGESTION MODE
-    // ==========================================
-    let contextToUse = repositoryContext || treeListing || '';
-
-    // Safeguard context size to prevent gateway timeout on gigantic monorepos
-    const MAX_CONTEXT_CHARS = 700_000; // ~175,000 tokens
-    if (contextToUse.length > MAX_CONTEXT_CHARS) {
-      contextToUse =
-        contextToUse.slice(0, MAX_CONTEXT_CHARS) +
-        '\n\n[... Remaining repository source code files truncated to prevent HTTP gateway timeout. Consider using Agentic Exploration Mode for selective deep file analysis ...]';
-    }
-
-    let systemInstructionToUse = NEXTJS_EXPERT_SYSTEM_INSTRUCTION;
-    let userContent = `Here is the repository context:\n\n${contextToUse}\n\n==========================================\nDEVELOPER'S REQUESTED IMPROVEMENTS:\n${improvementPrompt}\n\nCompile the Next.js Expert Autonomous Execution Prompt strictly following your system instruction.`;
-
-    if (mode === 'idea') {
-      systemInstructionToUse = IDEA_MODE_SYSTEM_INSTRUCTION;
-      userContent = `Here is the repository context for feature ideation and RICE / VRIN-EO evaluation:\n\n${contextToUse}\n\n==========================================\nDEVELOPER FOCUS OR GOAL:\n${improvementPrompt}\n\nSynthesize 77 innovative feature ideas and present the top 7 highest-ranked ideas according to your system instruction.`;
-    } else if (mode === 'btw') {
-      systemInstructionToUse = BTW_MODE_SYSTEM_INSTRUCTION;
-      userContent = `Here is the repository context:\n\n${contextToUse}\n\n==========================================\nDEVELOPER'S QUESTION:\n${improvementPrompt}\n\nAnswer the question directly and authoritatively with @[/path/to/file.ext] citations according to your system instruction.`;
-    }
-
-    let firstChunkText: string | null = null;
-    let activeStreamIterator: AsyncIterator<any> | null = null;
-    let successfulModel = '';
-    let successfulPass = 0;
-    const failureLog: string[] = [];
-
-    const MAX_PASSES = 2;
-
-    for (let pass = 1; pass <= MAX_PASSES; pass++) {
-      for (let i = 0; i < cascadingModels.length; i++) {
-        const modelName = cascadingModels[i];
-        try {
-          const responseStream = await withTimeout(
-            ai.models.generateContentStream({
-              model: modelName,
-              contents: userContent,
-              config: {
-                systemInstruction: systemInstructionToUse,
-                temperature: mode === 'idea' ? 0.4 : 0.2,
-              },
-            }),
-            timeoutMs,
-            `Model ${modelName} stream initiation timed out after ${requestTimeout}s`
-          );
-
-          const iterator = responseStream[Symbol.asyncIterator]();
-          const firstResult = await withTimeout(
-            iterator.next(),
-            timeoutMs,
-            `Model ${modelName} first chunk timed out after ${requestTimeout}s`
-          );
-
-          if (firstResult.done && !firstResult.value?.text) {
-            throw new Error(`Model ${modelName} returned an empty stream response`);
-          }
-
-          firstChunkText = firstResult.value?.text || '';
-          activeStreamIterator = iterator;
-          successfulModel = modelName;
-          successfulPass = pass;
-          break;
-        } catch (err: unknown) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          failureLog.push(`[Pass ${pass} / Model ${i + 1} (${modelName})]: ${errMsg}`);
-          console.warn(`[Cascading Fallback] Pass ${pass} - ${modelName} failed:`, errMsg);
-        }
-      }
-
-      if (activeStreamIterator !== null) {
-        break;
-      }
-    }
-
-    if (!activeStreamIterator && firstChunkText === null) {
-      return NextResponse.json(
-        {
-          error: `All ${cascadingModels.length} Gemini models in the cascading fallback strategy failed after ${MAX_PASSES} full passes.\n\nFailures:\n${failureLog.join('\n')}`,
-        },
-        { status: 502 }
-      );
-    }
-
-    const estimatedClassicInputTokens = Math.max(
-      1,
-      Math.ceil((NEXTJS_EXPERT_SYSTEM_INSTRUCTION.length + userContent.length) / 4)
-    );
-    const estimatedClassicOutputTokens = Math.max(
-      1,
-      Math.ceil((firstChunkText || '').length / 4)
-    );
-    const classicCost = calculateModelCost(
-      successfulModel,
-      estimatedClassicInputTokens,
-      estimatedClassicOutputTokens
-    );
-
-    const readable = new ReadableStream({
-      async start(controller) {
-        try {
-          if (firstChunkText) {
-            controller.enqueue(encoder.encode(firstChunkText));
-          }
-
-          if (activeStreamIterator) {
-            while (true) {
-              const { done, value } = await activeStreamIterator.next();
-              if (done) break;
-              const text = value?.text;
-              if (text) {
-                controller.enqueue(encoder.encode(text));
-              }
-            }
-          }
-          controller.close();
-        } catch (streamErr) {
-          controller.error(streamErr);
-        }
-      },
-    });
-
-    return new Response(readable, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        'X-Content-Type-Options': 'nosniff',
-        'X-Model-Used': successfulModel,
-        'X-Fallback-Pass': String(successfulPass),
-        'X-Input-Tokens': String(estimatedClassicInputTokens),
-        'X-Output-Tokens': String(estimatedClassicOutputTokens),
-        'X-Total-Cost-Usd': String(classicCost.totalCostUsd),
-      },
-    });
+    return NextResponse.json({ error: 'Missing owner, repo, or treeListing' }, { status: 400 });
   } catch (err: unknown) {
     console.error('Error in /api/compile:', err);
     const errorMessage = err instanceof Error ? err.message : 'Internal Server Error';

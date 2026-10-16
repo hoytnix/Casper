@@ -19,9 +19,11 @@
 - [x] AST-Aware Incremental Repo Caching & Delta Ingestion
 - [x] Dynamic Context-Aware Architectural Refactor Recommendations
 - [x] Clean SUGGESTED_REFACTORS Delimiter Splicing & Elimination of Mocked Follow-up Suggestions
-- [x] **Token Costs Over Time & Token Spending Analytics Tracker with Real Data DB**:
-  - Removed all mock seed data; trackers now start empty (`[]`) for real usage data.
-  - Fully functional trash can delete button and "Clear All" operation with immediate `localStorage` persistence (`nextjs_expert_token_records_v1`).
+- [x] Token Costs Over Time & Token Spending Analytics Tracker with Real Data DB
+- [x] **Deprecation of Full Ingestion & Multi-Round Exploration Fix**:
+  - Removed legacy full-repository ingestion mode across types (`IngestionMode`), UI buttons (`RepoWorkspace`), and route handlers (`/api/compile`).
+  - Unified all three canonical modes (**Prompt**, **Ideas**, **BTW**) under the high-performance agentic exploration pipeline.
+  - Fixed multi-round exploration counter and iteration loop (`maxRounds` dynamically respecting `settings.maxAgenticRounds` up to 4).
 
 ## Current Status
-Production-Ready. Token Costs Tracker operates exclusively on real data with fully functional delete, clear-all, and localStorage persistence. Zero ESLint errors, clean build, and synchronized Memory Bank.
+Production-Ready. Full ingestion mode successfully deprecated in favor of unified agentic Unix VFS exploration across Prompt, Ideas, and BTW modes. Multi-round exploration loop verified up to `maxRounds`. Zero ESLint errors, clean build, and synchronized Memory Bank.

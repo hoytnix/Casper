@@ -40,7 +40,7 @@ export const FinanceWorkspace: React.FC = () => {
     return []; // Real data only by default (no mock seed data)
   });
 
-  const [summary, setSummary] = useState<TokenCostSummary>(() => calculateTokenCostSummary(tokenRecords));
+  const summary = React.useMemo(() => calculateTokenCostSummary(tokenRecords), [tokenRecords]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Filters state
@@ -52,11 +52,10 @@ export const FinanceWorkspace: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Persist records to localStorage and re-calculate summary whenever tokenRecords change
+  // Persist records to localStorage whenever tokenRecords change
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(tokenRecords));
-      setSummary(calculateTokenCostSummary(tokenRecords));
     } catch (e) {
       console.warn('Failed to save token records to localStorage:', e);
     }
