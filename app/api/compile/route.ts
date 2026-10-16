@@ -29,6 +29,10 @@ STRUCTURE OF THE COMPILED PROMPT:
 4. **Dead Code & Redundancy Purge**: Explicit cleanup of unused imports, redundant client directives, obsolete types, or legacy routes caused by the changes.
 5. **Verification & Invariant Checks**: Exact terminal commands (\`npm run build\`, \`npm run lint\`) and runtime behavioral checks to verify completion.`;
 
+const IDEA_MODE_SYSTEM_INSTRUCTION = `You are Next.js Expert Principal Product Architect. Your task is to analyze the provided Next.js repository, extract existing features, synthesize 77 innovative feature and architectural improvements, score them rigorously using RICE (Reach, Impact, Confidence, Effort) and VRIN-EO (Value, Relativity, Inimitability, Non-Substitutability & Engine-Optimization) frameworks, and present the top 7 highest-ranked ideas in clean, structured Markdown. Include a clear breakdown table of RICE and VRIN-EO metrics, implementation hints, and targeted file paths formatted as @[/path/to/file.ext].`;
+
+const BTW_MODE_SYSTEM_INSTRUCTION = `You are Next.js Expert Codebase Assistant. Answer the developer's question directly and authoritatively using the provided repository context. Explain code architecture, component relationships, or data flows clearly. Cite files explicitly using @[/path/to/file.ext] format. Do not generate Antigravity prompt templates; provide direct, actionable technical answers.`;
+
 // Cascading Fallback Strategy: Incorporating Gemini 4 Argon as primary tier
 const DEFAULT_CASCADING_MODELS = [
   'gemini-4-argon',
@@ -87,7 +91,10 @@ export async function POST(req: NextRequest) {
       repositoryContext, // For fallback legacy full mode
       investigatedFiles: clientInvestigatedFiles, // Pre-routed files from client
       models: customModels,
+      requestTimeout = 60,
     } = body;
+
+    const timeoutMs = Math.max(15000, Number(requestTimeout) * 1000);
 
     const rawCustomModels = customModels || body.customModels;
     const modelsToUse: string[] =
@@ -212,8 +219,8 @@ INSTRUCTIONS FOR AGENTIC EXPLORATION:
                             temperature: 0.1,
                           },
                         }),
-                        10000,
-                        `Model ${model} exploration timed out after 10s`
+                        timeoutMs,
+                        `Model ${model} exploration timed out after ${requestTimeout}s`
                       );
                       exploreResult = response;
                       activeModel = model;
@@ -412,15 +419,15 @@ ${treeListing}
                         contents: finalPromptPayload,
                         config,
                       }),
-                      12000,
-                      `Model ${model} stream initiation timed out after 12s`
+                      timeoutMs,
+                      `Model ${model} stream initiation timed out after ${requestTimeout}s`
                     );
 
                     const iterator = candidateStream[Symbol.asyncIterator]();
                     const firstResult = await withTimeout(
                       iterator.next(),
-                      10000,
-                      `Model ${model} first chunk timed out after 10s`
+                      timeoutMs,
+                      `Model ${model} first chunk timed out after ${requestTimeout}s`
                     );
 
                     streamResponse = {
@@ -573,7 +580,16 @@ ${treeListing}
         '\n\n[... Remaining repository source code files truncated to prevent HTTP gateway timeout. Consider using Agentic Exploration Mode for selective deep file analysis ...]';
     }
 
-    const userContent = `Here is the repository context:\n\n${contextToUse}\n\n==========================================\nDEVELOPER'S REQUESTED IMPROVEMENTS:\n${improvementPrompt}\n\nCompile the Next.js Expert Autonomous Execution Prompt strictly following your system instruction.`;
+    let systemInstructionToUse = NEXTJS_EXPERT_SYSTEM_INSTRUCTION;
+    let userContent = `Here is the repository context:\n\n${contextToUse}\n\n==========================================\nDEVELOPER'S REQUESTED IMPROVEMENTS:\n${improvementPrompt}\n\nCompile the Next.js Expert Autonomous Execution Prompt strictly following your system instruction.`;
+
+    if (mode === 'idea') {
+      systemInstructionToUse = IDEA_MODE_SYSTEM_INSTRUCTION;
+      userContent = `Here is the repository context for feature ideation and RICE / VRIN-EO evaluation:\n\n${contextToUse}\n\n==========================================\nDEVELOPER FOCUS OR GOAL:\n${improvementPrompt}\n\nSynthesize 77 innovative feature ideas and present the top 7 highest-ranked ideas according to your system instruction.`;
+    } else if (mode === 'btw') {
+      systemInstructionToUse = BTW_MODE_SYSTEM_INSTRUCTION;
+      userContent = `Here is the repository context:\n\n${contextToUse}\n\n==========================================\nDEVELOPER'S QUESTION:\n${improvementPrompt}\n\nAnswer the question directly and authoritatively with @[/path/to/file.ext] citations according to your system instruction.`;
+    }
 
     let firstChunkText: string | null = null;
     let activeStreamIterator: AsyncIterator<any> | null = null;
@@ -592,19 +608,19 @@ ${treeListing}
               model: modelName,
               contents: userContent,
               config: {
-                systemInstruction: NEXTJS_EXPERT_SYSTEM_INSTRUCTION,
-                temperature: 0.2,
+                systemInstruction: systemInstructionToUse,
+                temperature: mode === 'idea' ? 0.4 : 0.2,
               },
             }),
-            12000,
-            `Model ${modelName} stream initiation timed out after 12s`
+            timeoutMs,
+            `Model ${modelName} stream initiation timed out after ${requestTimeout}s`
           );
 
           const iterator = responseStream[Symbol.asyncIterator]();
           const firstResult = await withTimeout(
             iterator.next(),
-            10000,
-            `Model ${modelName} first chunk timed out after 10s`
+            timeoutMs,
+            `Model ${modelName} first chunk timed out after ${requestTimeout}s`
           );
 
           if (firstResult.done && !firstResult.value?.text) {

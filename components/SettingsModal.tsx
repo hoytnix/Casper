@@ -16,8 +16,9 @@ import {
   ChevronDown,
   Sparkles,
   RotateCcw,
+  Clock,
 } from 'lucide-react';
-import { AppSettings, RouterEngineType, ModelConfig } from '@/types';
+import { AppSettings, RouterEngineType, ModelConfig, IngestionMode } from '@/types';
 import { checkGeminiNanoAvailability, warmUpLocalContextRouter } from '@/lib/local-context-router';
 import { DEFAULT_MODELS } from '@/hooks/useRepoStore';
 
@@ -36,10 +37,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [pat, setPat] = useState(settings.githubPat || '');
   const [apiKey, setApiKey] = useState(settings.customApiKey || '');
-  const [defaultMode, setDefaultMode] = useState<'agentic' | 'full'>(
-    settings.defaultMode || 'agentic'
-  );
+
   const [maxRounds, setMaxRounds] = useState<number>(settings.maxAgenticRounds || 3);
+  const [requestTimeout, setRequestTimeout] = useState<number>(settings.requestTimeout || 60);
   const [routerEngine, setRouterEngine] = useState<RouterEngineType>(
     settings.routerEngine || 'auto'
   );
@@ -98,11 +98,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onSave({
       githubPat: pat.trim(),
       customApiKey: apiKey.trim(),
-      defaultMode,
+
       maxAgenticRounds: maxRounds,
       routerEngine,
       models,
       preferredModel: models.find((m) => m.enabled)?.tag || 'gemini-4-argon',
+      requestTimeout,
     });
     setShowSavedToast(true);
     setTimeout(() => {
@@ -187,7 +188,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       setIsWarmingUp(true);
                       setWarmupNotice(null);
                       try {
-                        await warmUpLocalContextRouter([], 'global-warmup', routerEngine);
+                        await warmUpLocalContextRouter([], 'global-warmup', routerEngine, (status, pct) => {
+                          setWarmupNotice(pct !== undefined ? `${status} (${pct}%)` : status);
+                        });
                         setWarmupNotice('Local AI context router successfully warmed up!');
                       } catch (e) {
                         setWarmupNotice(`Warmup notice: ${e instanceof Error ? e.message : String(e)}`);
@@ -220,75 +223,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </p>
           </div>
 
-          {/* Default Ingestion Strategy */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
-              <Compass className="w-3.5 h-3.5 text-indigo-400" />
-              Default Compilation Strategy
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setDefaultMode('agentic')}
-                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
-                  defaultMode === 'agentic'
-                    ? 'border-indigo-500 bg-indigo-500/10 text-white'
-                    : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:border-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className="text-xs font-bold text-indigo-300">Agentic Loop</span>
-                  {defaultMode === 'agentic' && (
-                    <Check className="w-3.5 h-3.5 text-indigo-400" />
-                  )}
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                  Sequential blast-radius file exploration. 85% token savings &amp; pinpoint precision (Recommended).
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDefaultMode('full')}
-                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
-                  defaultMode === 'full'
-                    ? 'border-indigo-500 bg-indigo-500/10 text-white'
-                    : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:border-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className="text-xs font-bold text-violet-300">Full Ingestion</span>
-                  {defaultMode === 'full' && (
-                    <Check className="w-3.5 h-3.5 text-violet-400" />
-                  )}
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                  Pulls and flattens all source files in memory simultaneously.
-                </p>
-              </button>
+          {/* Max Agentic Rounds */}
+          <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-300">Max Exploration Rounds</span>
+              <span className="font-mono text-indigo-400 font-bold">{maxRounds} rounds</span>
             </div>
+            <input
+              type="range"
+              min="1"
+              max="4"
+              value={maxRounds}
+              onChange={(e) => setMaxRounds(parseInt(e.target.value, 10))}
+              className="w-full accent-indigo-500 cursor-pointer"
+            />
+            <p className="text-[10px] text-slate-500">
+              Number of sequential investigation turns the agent can take to examine deep dependencies.
+            </p>
           </div>
 
-          {/* Max Agentic Rounds */}
-          {defaultMode === 'agentic' && (
-            <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-300">Max Exploration Rounds</span>
-                <span className="font-mono text-indigo-400 font-bold">{maxRounds} rounds</span>
-              </div>
-              <input
-                type="range"
-                min="1"
-                max="4"
-                value={maxRounds}
-                onChange={(e) => setMaxRounds(parseInt(e.target.value, 10))}
-                className="w-full accent-indigo-500 cursor-pointer"
-              />
-              <p className="text-[10px] text-slate-500">
-                Number of sequential investigation turns the agent can take to examine deep dependencies.
-              </p>
+          {/* Request Timeout Setting */}
+          <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-sky-400" />
+                Request &amp; Stream Timeout
+              </span>
+              <span className="font-mono text-sky-400 font-bold">{requestTimeout} seconds</span>
             </div>
-          )}
+            <input
+              type="range"
+              min="15"
+              max="300"
+              step="15"
+              value={requestTimeout}
+              onChange={(e) => setRequestTimeout(parseInt(e.target.value, 10))}
+              className="w-full accent-sky-500 cursor-pointer"
+            />
+            <div className="flex items-center justify-between text-[10px] text-slate-500">
+              <span>15s</span>
+              <span>60s (Default)</span>
+              <span>300s (5m)</span>
+            </div>
+            <p className="text-[10px] text-slate-400 leading-relaxed">
+              Maximum wait time for AI model responses and stream chunks before timing out. Increase this if compilation requests timeout.
+            </p>
+          </div>
 
           {/* Model Priority & Fallback Waterfall */}
           <div className="space-y-3 pt-2 border-t border-slate-800">

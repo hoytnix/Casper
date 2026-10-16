@@ -13,16 +13,16 @@
 - [x] Cascading Model Resilience & Robust Streaming (`/app/api/compile/route.ts`)
 - [x] Dynamic API Cost Estimation & Model Pricing Engine (`/types/index.ts`, `/lib/utils.ts`)
 - [x] Gemini 4 Argon Support & Customizable Fallback Waterfall (`/types/index.ts`, `/lib/utils.ts`, `/components/SettingsModal.tsx`, `/hooks/useRepoStore.ts`)
-- [x] **Drop-Dead Gorgeous Visual Design & Anti-Slop Elevation**:
-  - Integrated `next/font/google` with `Plus Jakarta Sans` & `JetBrains Mono` with `tabular-nums`.
-  - Re-architected Top Navigation Bar to strictly conform to the 1-row, 3-zone Top Bar Contract.
-  - Implemented 2-column balanced split hero in RepoGrid with live Next.js Cartography Engine Monolith visual.
-  - Enforced Zero-Pill discipline across cards, headers, metadata, and exclude patterns.
-  - Replaced mechanical `>_` terminal clutter with refined architectural glyphs and Title-Case prose.
-  - Transformed ChatCompiler empty state and prompt command deck with high-intent tactile buttons.
-  - Cleaned up `SettingsModal` by removing iframe-breaking `alert()` calls in favor of inline feedback.
-  - Written and verified pure logic unit tests (`lib/utils.test.ts`) using `node:test` (100% pass rate).
-  - Executed end-to-end browser verification via Playwright CLI across desktop (1440x900) and mobile (390x844).
+- [x] Drop-Dead Gorgeous Visual Design & Anti-Slop Elevation
+- [x] **Configurable Request & Stream Timeout Setting**:
+  - Added `requestTimeout` setting (15s to 300s range slider, default 60s) in `SettingsModal.tsx` and `AppSettings`.
+  - Upgraded API route (`@/app/api/compile/route.ts`) and workspace client (`@/components/RepoWorkspace.tsx`) to dynamically utilize the user-configured timeout across exploration, stream initiation, and first-chunk response timeouts.
+- [x] **UI Button Nomenclature & Embedded Model Progress Interstitial**:
+  - Updated workspace mode toggle buttons from "Idea Mode (Top 7)" and "btw Mode" to **"Ideas"** and **"BTW"**.
+  - Purged redundant "Default Compilation Strategy" settings section.
+  - Added live progress streaming callbacks (`onProgress`, `progressPercent`, and `StepLoader` progress bar) for `@mlc-ai/web-llm` and `@huggingface/transformers` downloads.
 
 ## Current Status
-Production-Grade. Drop-dead gorgeous aesthetic active, 0 lint warnings, 100% unit test pass, and seamless browser journeys verified.
+Production-Grade. Refined UI button nomenclature, cleaned settings modal, and robust live progress reporting for embedded local AI models fully operational and verified.
+
+

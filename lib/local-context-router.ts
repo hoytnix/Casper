@@ -61,8 +61,10 @@ export async function checkGeminiNanoAvailability(): Promise<'available' | 'read
 export async function warmUpLocalContextRouter(
   files: SourceFile[],
   repoIdentifier: string,
-  enginePreference: RouterEngineType = 'auto'
+  enginePreference: RouterEngineType = 'auto',
+  onProgress?: (statusText: string, progressPercent?: number) => void
 ): Promise<{ nanoReady: boolean; arcticReady: boolean; qwenReady: boolean; totalFiles: number }> {
+  if (onProgress) onProgress('Initializing local context router...', 5);
   const repoIndex = buildNextJsRepoIndex(files);
   const codeGraph = buildNextJsCodeGraph(files);
   const graphSummary = serializeCodeGraphForPrompt(codeGraph);
@@ -79,9 +81,13 @@ export async function warmUpLocalContextRouter(
     try {
       if (!mlcEngine || mlcEngineModelId !== targetModel) {
         mlcEngineLoading = true;
+        if (onProgress) onProgress(`Loading MLC WebGPU model (${targetModel})...`, 15);
         mlcEngine = await CreateMLCEngine(targetModel, {
           initProgressCallback: (progress) => {
             console.log('MLC Init Progress:', progress.text);
+            if (onProgress) {
+              onProgress(progress.text || 'Loading WebGPU model weights...', undefined);
+            }
           }
         });
         mlcEngineModelId = targetModel;
@@ -95,11 +101,13 @@ export async function warmUpLocalContextRouter(
 
   // 2. Warm up Tier 1 Gemini Nano Session with Graph-Aware Unix tools capability
   if (enginePreference === 'auto' || enginePreference === 'gemini-nano-only') {
+    if (onProgress) onProgress('Checking Chrome Gemini Nano availability...', 25);
     const avail = await checkGeminiNanoAvailability();
     if (avail === 'available' || avail === 'downloadable') {
       try {
         const lm = window.LanguageModel || window.ai?.languageModel;
         if (lm && typeof lm.create === 'function') {
+          if (onProgress) onProgress('Creating Gemini Nano session...', 35);
           const systemPrompt = `You are an expert Next.js Function-Level Graph & Unix Agent Context Router. Your task is to investigate the repository using Unix & Code Graph tools (grep, find, head_tail, inspect_graph, trace_call_graph, get_route_map, find_related_symbols) to select the exact relevant Next.js source file paths.
 Available Unix Tools:
 1. {"tool": "grep", "args": {"pattern": "...", "pathPrefix": "..."}}
@@ -141,26 +149,42 @@ ${graphSummary.slice(0, 3500)}
     try {
       if (!embeddingPipeline && !isPipelineLoading) {
         isPipelineLoading = true;
+        if (onProgress) onProgress('Importing transformers.js library...', 45);
         const { pipeline, env } = await import('@huggingface/transformers');
         env.allowLocalModels = false;
         env.useBrowserCache = true;
 
+        if (onProgress) onProgress('Downloading Snowflake Arctic Embed XS model weights...', 55);
         embeddingPipeline = await pipeline('feature-extraction', 'Snowflake/snowflake-arctic-embed-xs', {
           dtype: 'fp32',
+          progress_callback: (progress: any) => {
+            if (onProgress && progress) {
+              const p = progress.progress || (progress.loaded && progress.total ? Math.round((progress.loaded / progress.total) * 100) : undefined);
+              onProgress(progress.status || 'Downloading embedding weights...', p);
+            }
+          }
         });
         isPipelineLoading = false;
       }
 
-      if (embeddingPipeline) {
+      if (embeddingPipeline && files.length > 0) {
         cachedFileEmbeddings = [];
+        let idx = 0;
         for (const card of repoIndex) {
+          if (onProgress) {
+            const pct = Math.round(65 + (idx / repoIndex.length) * 35);
+            onProgress(`Embedding file (${idx + 1}/${repoIndex.length}): ${card.path}`, pct);
+          }
           const output = await embeddingPipeline(card.skeletonLine, {
             pooling: 'mean',
             normalize: true,
           });
           const vector = new Float32Array(output.data);
           cachedFileEmbeddings.push({ path: card.path, vector, skeleton: card.skeletonLine });
+          idx++;
         }
+        arcticReady = true;
+      } else {
         arcticReady = true;
       }
     } catch (err) {
@@ -170,6 +194,7 @@ ${graphSummary.slice(0, 3500)}
     }
   }
 
+  if (onProgress) onProgress('Local AI router ready!', 100);
   return { nanoReady, arcticReady, qwenReady, totalFiles: files.length };
 }
 
@@ -178,7 +203,8 @@ export async function routeNextJsContext(
   files: SourceFile[],
   repoIdentifier: string,
   enginePreference: RouterEngineType = 'auto',
-  maxExtraFiles: number = 6
+  maxExtraFiles: number = 6,
+  onProgress?: (statusText: string, progressPercent?: number) => void
 ): Promise<RoutingResult> {
   const startTime = performance.now();
   const repoIndex = buildNextJsRepoIndex(files);
@@ -188,7 +214,7 @@ export async function routeNextJsContext(
   const toolTraces: RouterToolTrace[] = [];
 
   if (cachedRepoKey !== repoIdentifier || (!cachedBaseSession && cachedFileEmbeddings.length === 0 && !mlcEngine)) {
-    await warmUpLocalContextRouter(files, repoIdentifier, enginePreference);
+    await warmUpLocalContextRouter(files, repoIdentifier, enginePreference, onProgress);
   }
 
   // ==========================================

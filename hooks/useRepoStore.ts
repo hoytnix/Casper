@@ -111,6 +111,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   maxAgenticRounds: 3,
   routerEngine: 'auto',
   models: DEFAULT_MODELS,
+  requestTimeout: 60,
 };
 
 const emptySubscribe = () => () => {};

@@ -64,6 +64,20 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
         <Loader2 className="w-4 h-4 text-indigo-400 animate-spin mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-slate-100">{progress.message}</p>
+          {progress.progressPercent !== undefined && (
+            <div className="mt-2.5 space-y-1">
+              <div className="flex items-center justify-between text-[10px] font-mono text-indigo-300">
+                <span>Model download &amp; warmup progress</span>
+                <span>{progress.progressPercent}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-white/[0.08]">
+                <div
+                  className="h-full bg-indigo-500 transition-all duration-300"
+                  style={{ width: `${Math.min(100, Math.max(0, progress.progressPercent))}%` }}
+                />
+              </div>
+            </div>
+          )}
           {progress.activePaths && progress.activePaths.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {progress.activePaths.map((p) => (

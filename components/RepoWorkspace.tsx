@@ -11,6 +11,8 @@ import {
   Compass,
   Layers,
   Coins,
+  Sparkles,
+  HelpCircle,
 } from 'lucide-react';
 import {
   Repo,
@@ -21,6 +23,7 @@ import {
   ExplorationStep,
   SourceFile,
   ModelCostDetails,
+  IngestionMode,
 } from '@/types';
 import { ContextInspector } from './ContextInspector';
 import { ChatCompiler } from './ChatCompiler';
@@ -59,7 +62,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadMessages(repo.id));
   const [branches, setBranches] = useState<string[]>([repo.branch]);
   const [isBranchLoading, setIsBranchLoading] = useState(true);
-  const [mode, setMode] = useState<'agentic' | 'full'>(
+  const [mode, setMode] = useState<IngestionMode>(
     repo.preferredMode || settings.defaultMode || 'agentic'
   );
 
@@ -100,7 +103,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
   };
 
   // Toggle Mode
-  const handleToggleMode = (newMode: 'agentic' | 'full') => {
+  const handleToggleMode = (newMode: IngestionMode) => {
     setMode(newMode);
     onUpdateRepo(repo.id, { preferredMode: newMode });
   };
@@ -158,137 +161,473 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
       // ==========================================
       // IN-BROWSER AGENTIC CONTEXT ROUTER (Gemini Nano + Arctic-Embed-XS)
       // ==========================================
-      setProgress({
-        step: 'agentic_exploring',
-        message: 'Running local in-browser context router (Gemini Nano / Arctic-Embed-XS)...',
-        currentRound: 1,
-        maxRounds: 1,
-        explorationTrail: [],
-      });
+      if (mode === 'agentic') {
+        setProgress({
+          step: 'agentic_exploring',
+          message: 'Running local in-browser context router (Gemini Nano / Arctic-Embed-XS)...',
+          currentRound: 1,
+          maxRounds: 1,
+          explorationTrail: [],
+        });
 
-      // Fetch sample source files for routing
-      const routingSampleFiles = await downloadSourceFiles(
-        repo.owner,
-        repo.repo,
-        repo.branch,
-        eligibleTreeItems.slice(0, 30), // Top 30 candidate files for local embedding
-        settings.githubPat
-      );
+        // Fetch sample source files for routing
+        const routingSampleFiles = await downloadSourceFiles(
+          repo.owner,
+          repo.repo,
+          repo.branch,
+          eligibleTreeItems.slice(0, 30), // Top 30 candidate files for local embedding
+          settings.githubPat
+        );
 
-      const routingResult = await routeNextJsContext(
-        promptText,
-        routingSampleFiles,
-        `${repo.owner}/${repo.repo}-${repo.branch}`,
-        settings.routerEngine || 'auto',
-        6
-      );
+        const routingResult = await routeNextJsContext(
+          promptText,
+          routingSampleFiles,
+          `${repo.owner}/${repo.repo}-${repo.branch}`,
+          settings.routerEngine || 'auto',
+          6,
+          (status, pct) => {
+            setProgress((prev) => ({
+              ...prev,
+              step: 'agentic_exploring',
+              message: status,
+              progressPercent: pct,
+            }));
+          }
+        );
 
-      const targetedPaths = routingResult.selectedPaths;
-      const routerEngineUsed = routingResult.engineUsed;
-      const routerLatencyMs = routingResult.latencyMs;
-      const toolTraces = routingResult.toolTraces || [];
+        const targetedPaths = routingResult.selectedPaths;
+        const routerEngineUsed = routingResult.engineUsed;
+        const routerLatencyMs = routingResult.latencyMs;
+        const toolTraces = routingResult.toolTraces || [];
 
-      setProgress({
-        step: 'agentic_exploring',
-        message: `Running local Unix VFS agent router (${routerEngineUsed})...`,
-        currentRound: 1,
-        maxRounds: 1,
-        explorationTrail: [],
-        toolTraces,
-      });
-
-      // Download full content for selected paths
-      const downloadedInvestigated = await downloadSourceFiles(
-        repo.owner,
-        repo.repo,
-        repo.branch,
-        eligibleTreeItems.filter((item) => targetedPaths.includes(item.path)),
-        settings.githubPat
-      );
-
-      const explorationStepRecord: ExplorationStep = {
-        id: `local-router-${Date.now()}`,
-        round: 1,
-        paths: targetedPaths,
-        reason: `Routed via ${routerEngineUsed} in ${routerLatencyMs}ms using Unix VFS tool loop & Next.js import closure.`,
-        timestamp: Date.now(),
-        status: 'completed',
-        filesSummary: downloadedInvestigated.map((f) => ({ path: f.path, size: f.size })),
-        toolTraces,
-      };
-
-      const assistantMsgId = `assistant-${Date.now()}`;
-      currentAssistantMsgId = assistantMsgId;
-      const assistantMsg: ChatMessage = {
-        id: assistantMsgId,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-        snapshotMeta: {
-          filesCount: downloadedInvestigated.length,
-          tokensCount: 0,
-          commitSha,
-          branch: repo.branch,
-          mode,
-          routerEngine: routerEngineUsed,
-          routerLatencyMs,
+        setProgress({
+          step: 'agentic_exploring',
+          message: `Running local Unix VFS agent router (${routerEngineUsed})...`,
+          currentRound: 1,
+          maxRounds: 1,
+          explorationTrail: [],
           toolTraces,
+        });
+
+        // Download full content for selected paths
+        const downloadedInvestigated = await downloadSourceFiles(
+          repo.owner,
+          repo.repo,
+          repo.branch,
+          eligibleTreeItems.filter((item) => targetedPaths.includes(item.path)),
+          settings.githubPat
+        );
+
+        const explorationStepRecord: ExplorationStep = {
+          id: `local-router-${Date.now()}`,
+          round: 1,
+          paths: targetedPaths,
+          reason: `Routed via ${routerEngineUsed} in ${routerLatencyMs}ms using Unix VFS tool loop & Next.js import closure.`,
+          timestamp: Date.now(),
+          status: 'completed',
+          filesSummary: downloadedInvestigated.map((f) => ({ path: f.path, size: f.size })),
+          toolTraces,
+        };
+
+        const assistantMsgId = `assistant-${Date.now()}`;
+        currentAssistantMsgId = assistantMsgId;
+        const assistantMsg: ChatMessage = {
+          id: assistantMsgId,
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now(),
+          snapshotMeta: {
+            filesCount: downloadedInvestigated.length,
+            tokensCount: 0,
+            commitSha,
+            branch: repo.branch,
+            mode,
+            routerEngine: routerEngineUsed,
+            routerLatencyMs,
+            toolTraces,
+            explorationTrail: [explorationStepRecord],
+          },
+        };
+
+        const messagesWithAssistantPlaceholder = [
+          ...updatedMessagesWithUser,
+          assistantMsg,
+        ];
+        setMessages(messagesWithAssistantPlaceholder);
+
+        // ==========================================
+        // SERVER-SIDE SYNTHESIS & STREAM PROMPT
+        // ==========================================
+        setProgress({
+          step: 'compiling_prompt',
+          message: `Synthesizing Next.js Expert execution prompt via ${routerEngineUsed} (${routerLatencyMs}ms)...`,
           explorationTrail: [explorationStepRecord],
-        },
-      };
+        });
 
-      const messagesWithAssistantPlaceholder = [
-        ...updatedMessagesWithUser,
-        assistantMsg,
-      ];
-      setMessages(messagesWithAssistantPlaceholder);
+        const response = await fetch('/api/compile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode,
+            owner: repo.owner,
+            repo: repo.repo,
+            branch: repo.branch,
+            treeListing,
+            investigatedFiles: downloadedInvestigated,
+            improvementPrompt: promptText,
+            customApiKey: settings.customApiKey,
+            githubPat: settings.githubPat,
+            routerEngine: routerEngineUsed,
+            models: settings.models,
+            requestTimeout: settings.requestTimeout || 60,
+          }),
+        });
 
-      // ==========================================
-      // SERVER-SIDE SYNTHESIS & STREAM PROMPT
-      // ==========================================
-      setProgress({
-        step: 'compiling_prompt',
-        message: `Synthesizing Next.js Expert execution prompt via ${routerEngineUsed} (${routerLatencyMs}ms)...`,
-        explorationTrail: [explorationStepRecord],
-      });
+          // Guard against reverse proxy warmup/timeout HTML pages
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('text/html')) {
+            const rawHtml = await response.text().catch(() => '');
+            if (
+              rawHtml.includes('Starting Server') ||
+              rawHtml.includes('warmup') ||
+              rawHtml.includes('<!doctype')
+            ) {
+              throw new Error(
+                'Server gateway warmup screen intercepted. The upstream request timed out. Please try compiling again.'
+              );
+            }
+            throw new Error(`Compiler returned HTML (${response.status}) instead of an event stream.`);
+          }
 
-      const response = await fetch('/api/compile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'agentic',
-          owner: repo.owner,
-          repo: repo.repo,
-          branch: repo.branch,
-          treeListing,
-          investigatedFiles: downloadedInvestigated,
-          improvementPrompt: promptText,
-          customApiKey: settings.customApiKey,
-          githubPat: settings.githubPat,
-          routerEngine: routerEngineUsed,
-          models: settings.models,
-        }),
-      });
+          if (!response.ok) {
+            const errorJson = await response.json().catch(() => null);
+            throw new Error(errorJson?.error || `Agentic server error (${response.status})`);
+          }
 
-        // Guard against reverse proxy warmup/timeout HTML pages
+          if (!response.body) {
+            throw new Error('No streaming response body received');
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let accumulatedContent = '';
+          const currentTrail: ExplorationStep[] = [];
+          let investigatedCount = 0;
+          let investigatedFiles: SourceFile[] = [];
+          let modelUsed = '';
+          let fallbackPass = 1;
+          let accumulatedThinking = '';
+          let serverInputTokens = 3500;
+          let finalCostDetails: ModelCostDetails | null = null;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const events = buffer.split('\n\n');
+            buffer = events.pop() || '';
+
+            for (const rawEvent of events) {
+              const line = rawEvent.trim();
+              if (!line.startsWith('data: ')) continue;
+              const jsonStr = line.slice(6);
+
+              try {
+                const evt = JSON.parse(jsonStr);
+
+                if (evt.type === 'agent_round') {
+                  setProgress((prev) => ({
+                    ...prev,
+                    step: 'agentic_exploring',
+                    currentRound: evt.round,
+                    message: evt.message,
+                  }));
+                } else if (evt.type === 'agent_inspect') {
+                  setProgress((prev) => ({
+                    ...prev,
+                    step: 'agentic_exploring',
+                    message: `Round ${evt.round}: Investigating ${evt.paths.length} suspect files...`,
+                    activePaths: evt.paths,
+                  }));
+                } else if (evt.type === 'agent_files_loaded') {
+                  if (evt.step) {
+                    currentTrail.push(evt.step);
+                  }
+                  investigatedCount = evt.totalInvestigated || investigatedCount;
+                  setProgress((prev) => ({
+                    ...prev,
+                    explorationTrail: [...currentTrail],
+                    loadedFiles: investigatedCount,
+                  }));
+                } else if (evt.type === 'compiling_start') {
+                  modelUsed = evt.model || modelUsed;
+                  fallbackPass = evt.pass || fallbackPass;
+                  if (evt.inputTokens) {
+                    serverInputTokens = evt.inputTokens;
+                  }
+                  const initialCost = calculateModelCost(
+                    modelUsed || 'gemini-3.8-flash',
+                    serverInputTokens,
+                    50
+                  );
+                  setProgress((prev) => ({
+                    ...prev,
+                    step: 'compiling_prompt',
+                    message: `Synthesizing Antigravity prompt from ${investigatedCount} locked context files...`,
+                    explorationTrail: [...currentTrail],
+                    inputTokens: serverInputTokens,
+                    costDetails: initialCost,
+                  }));
+                } else if (evt.type === 'thinking_start') {
+                  setProgress((prev) => ({
+                    ...prev,
+                    step: 'compiling_prompt',
+                    message: evt.message || 'Model thinking in progress...',
+                    thinkingContent: '',
+                  }));
+                } else if (evt.type === 'thinking_chunk') {
+                  accumulatedThinking += evt.text || '';
+                  setProgress((prev) => ({
+                    ...prev,
+                    thinkingContent: accumulatedThinking,
+                  }));
+                } else if (evt.type === 'thinking_end') {
+                  setProgress((prev) => ({
+                    ...prev,
+                    message: 'Model reasoning complete. Streaming compiled prompt...',
+                  }));
+                } else if (evt.type === 'prompt_chunk') {
+                  accumulatedContent += evt.text || '';
+                  const currentOutputTokens = Math.max(1, Math.ceil(accumulatedContent.length / 4));
+                  const dynamicCost = calculateModelCost(
+                    modelUsed || 'gemini-3.8-flash',
+                    serverInputTokens,
+                    currentOutputTokens
+                  );
+                  finalCostDetails = dynamicCost;
+
+                  setProgress((prev) => ({
+                    ...prev,
+                    outputTokens: currentOutputTokens,
+                    costDetails: dynamicCost,
+                  }));
+
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsgId
+                        ? {
+                            ...m,
+                            content: accumulatedContent,
+                            thinkingContent: accumulatedThinking || undefined,
+                            costDetails: dynamicCost,
+                            snapshotMeta: {
+                              ...m.snapshotMeta!,
+                              filesCount: investigatedCount,
+                              tokensCount: currentOutputTokens,
+                              modelUsed,
+                              fallbackPass,
+                              mode: 'agentic' as const,
+                              explorationTrail: currentTrail,
+                              thinkingContent: accumulatedThinking || undefined,
+                              costDetails: dynamicCost,
+                              inputTokens: serverInputTokens,
+                              outputTokens: currentOutputTokens,
+                              totalCostUsd: dynamicCost.totalCostUsd,
+                              modelPricing: resolveModelPricing(modelUsed || dynamicCost.modelName),
+                            },
+                          }
+                        : m
+                    )
+                  );
+                } else if (evt.type === 'done') {
+                  modelUsed = evt.model || modelUsed;
+                  fallbackPass = evt.pass || fallbackPass;
+                  if (evt.inputTokens) serverInputTokens = evt.inputTokens;
+                  const finalOutputTokens =
+                    evt.outputTokens || Math.max(1, Math.ceil(accumulatedContent.length / 4));
+                  if (evt.costDetails) {
+                    finalCostDetails = evt.costDetails;
+                  } else {
+                    finalCostDetails = calculateModelCost(
+                      modelUsed || 'gemini-3.8-flash',
+                      serverInputTokens,
+                      finalOutputTokens
+                    );
+                  }
+                  if (evt.investigatedFiles && Array.isArray(evt.investigatedFiles)) {
+                    investigatedFiles = evt.investigatedFiles;
+                  }
+                } else if (evt.type === 'error') {
+                  throw new Error(evt.error || 'Agentic exploration failed');
+                }
+              } catch (parseErr) {
+                console.warn('Could not parse SSE event:', parseErr);
+              }
+            }
+          }
+
+          const finalTokensCount = Math.max(1, Math.ceil(accumulatedContent.length / 4));
+          const calculatedCost =
+            finalCostDetails ||
+            calculateModelCost(
+              modelUsed || 'gemini-3.8-flash',
+              serverInputTokens,
+              finalTokensCount
+            );
+
+          // Save Snapshot with complete cost metrics
+          const agentSnapshot: IngestionSnapshot = {
+            owner: repo.owner,
+            repo: repo.repo,
+            branch: repo.branch,
+            commitSha,
+            totalTreeBlobs: allBlobPaths.length,
+            includedFilesCount: downloadedInvestigated.length,
+            estimatedTokens: finalTokensCount,
+            charCount: accumulatedContent.length,
+            timestamp: Date.now(),
+            treeListing,
+            files: downloadedInvestigated,
+            mode: 'agentic' as const,
+            explorationTrail: [explorationStepRecord],
+            toolTraces,
+            costDetails: calculatedCost,
+            inputTokens: calculatedCost.inputTokens,
+            outputTokens: calculatedCost.outputTokens,
+            totalCostUsd: calculatedCost.totalCostUsd,
+            modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
+          };
+
+          saveSnapshot(repo.id, agentSnapshot);
+          onUpdateRepo(repo.id, { lastSyncedAt: Date.now() });
+
+          const finalMessages: ChatMessage[] = messagesWithAssistantPlaceholder.map((m) =>
+            m.id === assistantMsgId
+              ? {
+                  ...m,
+                  content: accumulatedContent,
+                  thinkingContent: accumulatedThinking || undefined,
+                  costDetails: calculatedCost,
+                  snapshotMeta: {
+                    ...m.snapshotMeta!,
+                    filesCount: downloadedInvestigated.length,
+                    tokensCount: finalTokensCount,
+                    modelUsed,
+                    fallbackPass,
+                    mode: 'agentic' as const,
+                    explorationTrail: [explorationStepRecord],
+                    thinkingContent: accumulatedThinking || undefined,
+                    costDetails: calculatedCost,
+                    inputTokens: calculatedCost.inputTokens,
+                    outputTokens: calculatedCost.outputTokens,
+                    totalCostUsd: calculatedCost.totalCostUsd,
+                    modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
+                  },
+                }
+              : m
+          );
+          saveMessages(repo.id, finalMessages);
+
+          setProgress({
+            step: 'completed',
+            message: 'Compilation complete',
+            explorationTrail: [explorationStepRecord],
+            costDetails: calculatedCost,
+            inputTokens: calculatedCost.inputTokens,
+            outputTokens: calculatedCost.outputTokens,
+          });
+      } else {
+        // ==========================================
+        // FULL INGESTION, IDEA MODE, OR BTW MODE
+        // ==========================================
+        setProgress({
+          step: 'downloading_files',
+          message: mode === 'idea' ? 'Downloading files for AI Ideation & RICE scoring...' : mode === 'btw' ? 'Downloading files for codebase Q&A...' : 'Downloading full repository files in memory...',
+        });
+
+        const filesToDownload = eligibleTreeItems.slice(0, 120);
+        const downloadedFiles = await downloadSourceFiles(
+          repo.owner,
+          repo.repo,
+          repo.branch,
+          filesToDownload,
+          settings.githubPat,
+          (loaded, total) => {
+            setProgress({
+              step: 'downloading_files',
+              message: `Downloaded ${loaded} of ${total} source files...`,
+            });
+          }
+        );
+
+        const assembled = assembleRepositoryContextPayload(
+          allBlobPaths,
+          downloadedFiles,
+          repo.owner,
+          repo.repo,
+          repo.branch,
+          commitSha
+        );
+
+        const assistantMsgId = `assistant-${Date.now()}`;
+        currentAssistantMsgId = assistantMsgId;
+        const assistantMsg: ChatMessage = {
+          id: assistantMsgId,
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now(),
+          snapshotMeta: {
+            filesCount: downloadedFiles.length,
+            tokensCount: assembled.estimatedTokens,
+            commitSha,
+            branch: repo.branch,
+            mode,
+          },
+        };
+
+        const messagesWithAssistantPlaceholder = [
+          ...updatedMessagesWithUser,
+          assistantMsg,
+        ];
+        setMessages(messagesWithAssistantPlaceholder);
+
+        setProgress({
+          step: 'compiling_prompt',
+          message: mode === 'idea' ? 'Synthesizing top 7 innovative ideas with RICE & VRIN-EO scores...' : mode === 'btw' ? 'Analyzing codebase and formulating answer...' : 'Synthesizing full Antigravity execution prompt via Gemini...',
+        });
+
+        const response = await fetch('/api/compile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode,
+            owner: repo.owner,
+            repo: repo.repo,
+            branch: repo.branch,
+            treeListing: assembled.treeListing,
+            repositoryContext: assembled.payload,
+            improvementPrompt: promptText,
+            customApiKey: settings.customApiKey,
+            githubPat: settings.githubPat,
+            models: settings.models,
+            requestTimeout: settings.requestTimeout || 60,
+          }),
+        });
+
         const contentType = response.headers.get('content-type') || '';
         if (contentType.includes('text/html')) {
           const rawHtml = await response.text().catch(() => '');
-          if (
-            rawHtml.includes('Starting Server') ||
-            rawHtml.includes('warmup') ||
-            rawHtml.includes('<!doctype')
-          ) {
-            throw new Error(
-              'Server gateway warmup screen intercepted. The upstream request timed out. Please try compiling again.'
-            );
+          if (rawHtml.includes('Starting Server') || rawHtml.includes('warmup') || rawHtml.includes('<!doctype')) {
+            throw new Error('Server gateway warmup screen intercepted. The upstream request timed out. Please try compiling again.');
           }
-          throw new Error(`Compiler returned HTML (${response.status}) instead of an event stream.`);
+          throw new Error(`Compiler returned HTML (${response.status}) instead of a stream.`);
         }
 
         if (!response.ok) {
           const errorJson = await response.json().catch(() => null);
-          throw new Error(errorJson?.error || `Agentic server error (${response.status})`);
+          throw new Error(errorJson?.error || `Server error (${response.status})`);
         }
 
         if (!response.body) {
@@ -297,197 +636,70 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let buffer = '';
         let accumulatedContent = '';
-        const currentTrail: ExplorationStep[] = [];
-        let investigatedCount = 0;
-        let investigatedFiles: SourceFile[] = [];
-        let modelUsed = '';
-        let fallbackPass = 1;
-        let accumulatedThinking = '';
-        let serverInputTokens = 3500;
+        let serverModelUsed = response.headers.get('X-Model-Used') || 'gemini-3.8-flash';
+        let serverFallbackPass = parseInt(response.headers.get('X-Fallback-Pass') || '1', 10);
+        let serverInputTokens = parseInt(response.headers.get('X-Input-Tokens') || String(assembled.estimatedTokens), 10);
         let finalCostDetails: ModelCostDetails | null = null;
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          const text = decoder.decode(value, { stream: true });
+          accumulatedContent += text;
+          const currentOutputTokens = Math.max(1, Math.ceil(accumulatedContent.length / 4));
+          const dynamicCost = calculateModelCost(serverModelUsed, serverInputTokens, currentOutputTokens);
+          finalCostDetails = dynamicCost;
 
-          buffer += decoder.decode(value, { stream: true });
-          const events = buffer.split('\n\n');
-          buffer = events.pop() || '';
-
-          for (const rawEvent of events) {
-            const line = rawEvent.trim();
-            if (!line.startsWith('data: ')) continue;
-            const jsonStr = line.slice(6);
-
-            try {
-              const evt = JSON.parse(jsonStr);
-
-              if (evt.type === 'agent_round') {
-                setProgress((prev) => ({
-                  ...prev,
-                  step: 'agentic_exploring',
-                  currentRound: evt.round,
-                  message: evt.message,
-                }));
-              } else if (evt.type === 'agent_inspect') {
-                setProgress((prev) => ({
-                  ...prev,
-                  step: 'agentic_exploring',
-                  message: `Round ${evt.round}: Investigating ${evt.paths.length} suspect files...`,
-                  activePaths: evt.paths,
-                }));
-              } else if (evt.type === 'agent_files_loaded') {
-                if (evt.step) {
-                  currentTrail.push(evt.step);
-                }
-                investigatedCount = evt.totalInvestigated || investigatedCount;
-                setProgress((prev) => ({
-                  ...prev,
-                  explorationTrail: [...currentTrail],
-                  loadedFiles: investigatedCount,
-                }));
-              } else if (evt.type === 'compiling_start') {
-                modelUsed = evt.model || modelUsed;
-                fallbackPass = evt.pass || fallbackPass;
-                if (evt.inputTokens) {
-                  serverInputTokens = evt.inputTokens;
-                }
-                const initialCost = calculateModelCost(
-                  modelUsed || 'gemini-3.8-flash',
-                  serverInputTokens,
-                  50
-                );
-                setProgress((prev) => ({
-                  ...prev,
-                  step: 'compiling_prompt',
-                  message: `Synthesizing Antigravity prompt from ${investigatedCount} locked context files...`,
-                  explorationTrail: [...currentTrail],
-                  inputTokens: serverInputTokens,
-                  costDetails: initialCost,
-                }));
-              } else if (evt.type === 'thinking_start') {
-                setProgress((prev) => ({
-                  ...prev,
-                  step: 'compiling_prompt',
-                  message: evt.message || 'Model thinking in progress...',
-                  thinkingContent: '',
-                }));
-              } else if (evt.type === 'thinking_chunk') {
-                accumulatedThinking += evt.text || '';
-                setProgress((prev) => ({
-                  ...prev,
-                  thinkingContent: accumulatedThinking,
-                }));
-              } else if (evt.type === 'thinking_end') {
-                setProgress((prev) => ({
-                  ...prev,
-                  message: 'Model reasoning complete. Streaming compiled prompt...',
-                }));
-              } else if (evt.type === 'prompt_chunk') {
-                accumulatedContent += evt.text || '';
-                const currentOutputTokens = Math.max(1, Math.ceil(accumulatedContent.length / 4));
-                const dynamicCost = calculateModelCost(
-                  modelUsed || 'gemini-3.8-flash',
-                  serverInputTokens,
-                  currentOutputTokens
-                );
-                finalCostDetails = dynamicCost;
-
-                setProgress((prev) => ({
-                  ...prev,
-                  outputTokens: currentOutputTokens,
-                  costDetails: dynamicCost,
-                }));
-
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMsgId
-                      ? {
-                          ...m,
-                          content: accumulatedContent,
-                          thinkingContent: accumulatedThinking || undefined,
-                          costDetails: dynamicCost,
-                          snapshotMeta: {
-                            ...m.snapshotMeta!,
-                            filesCount: investigatedCount,
-                            tokensCount: currentOutputTokens,
-                            modelUsed,
-                            fallbackPass,
-                            mode: 'agentic' as const,
-                            explorationTrail: currentTrail,
-                            thinkingContent: accumulatedThinking || undefined,
-                            costDetails: dynamicCost,
-                            inputTokens: serverInputTokens,
-                            outputTokens: currentOutputTokens,
-                            totalCostUsd: dynamicCost.totalCostUsd,
-                            modelPricing: resolveModelPricing(modelUsed || dynamicCost.modelName),
-                          },
-                        }
-                      : m
-                  )
-                );
-              } else if (evt.type === 'done') {
-                modelUsed = evt.model || modelUsed;
-                fallbackPass = evt.pass || fallbackPass;
-                if (evt.inputTokens) serverInputTokens = evt.inputTokens;
-                const finalOutputTokens =
-                  evt.outputTokens || Math.max(1, Math.ceil(accumulatedContent.length / 4));
-                if (evt.costDetails) {
-                  finalCostDetails = evt.costDetails;
-                } else {
-                  finalCostDetails = calculateModelCost(
-                    modelUsed || 'gemini-3.8-flash',
-                    serverInputTokens,
-                    finalOutputTokens
-                  );
-                }
-                if (evt.investigatedFiles && Array.isArray(evt.investigatedFiles)) {
-                  investigatedFiles = evt.investigatedFiles;
-                }
-              } else if (evt.type === 'error') {
-                throw new Error(evt.error || 'Agentic exploration failed');
-              }
-            } catch (parseErr) {
-              console.warn('Could not parse SSE event:', parseErr);
-            }
-          }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    content: accumulatedContent,
+                    costDetails: dynamicCost,
+                    snapshotMeta: {
+                      ...m.snapshotMeta!,
+                      filesCount: downloadedFiles.length,
+                      tokensCount: currentOutputTokens,
+                      modelUsed: serverModelUsed,
+                      fallbackPass: serverFallbackPass,
+                      mode,
+                      inputTokens: serverInputTokens,
+                      outputTokens: currentOutputTokens,
+                      totalCostUsd: dynamicCost.totalCostUsd,
+                      modelPricing: resolveModelPricing(serverModelUsed),
+                    },
+                  }
+                : m
+            )
+          );
         }
 
         const finalTokensCount = Math.max(1, Math.ceil(accumulatedContent.length / 4));
-        const calculatedCost =
-          finalCostDetails ||
-          calculateModelCost(
-            modelUsed || 'gemini-3.8-flash',
-            serverInputTokens,
-            finalTokensCount
-          );
+        const calculatedCost = finalCostDetails || calculateModelCost(serverModelUsed, serverInputTokens, finalTokensCount);
 
-        // Save Snapshot with complete cost metrics
-        const agentSnapshot: IngestionSnapshot = {
+        const snapshotRecord: IngestionSnapshot = {
           owner: repo.owner,
           repo: repo.repo,
           branch: repo.branch,
           commitSha,
           totalTreeBlobs: allBlobPaths.length,
-          includedFilesCount: downloadedInvestigated.length,
+          includedFilesCount: downloadedFiles.length,
           estimatedTokens: finalTokensCount,
-          charCount: accumulatedContent.length,
+          charCount: assembled.charCount,
           timestamp: Date.now(),
-          treeListing,
-          files: downloadedInvestigated,
-          mode: 'agentic' as const,
-          explorationTrail: [explorationStepRecord],
-          toolTraces,
+          treeListing: assembled.treeListing,
+          files: downloadedFiles,
+          mode,
           costDetails: calculatedCost,
           inputTokens: calculatedCost.inputTokens,
           outputTokens: calculatedCost.outputTokens,
           totalCostUsd: calculatedCost.totalCostUsd,
-          modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
+          modelPricing: resolveModelPricing(serverModelUsed),
         };
 
-        saveSnapshot(repo.id, agentSnapshot);
+        saveSnapshot(repo.id, snapshotRecord);
         onUpdateRepo(repo.id, { lastSyncedAt: Date.now() });
 
         const finalMessages: ChatMessage[] = messagesWithAssistantPlaceholder.map((m) =>
@@ -495,22 +707,18 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             ? {
                 ...m,
                 content: accumulatedContent,
-                thinkingContent: accumulatedThinking || undefined,
                 costDetails: calculatedCost,
                 snapshotMeta: {
                   ...m.snapshotMeta!,
-                  filesCount: downloadedInvestigated.length,
+                  filesCount: downloadedFiles.length,
                   tokensCount: finalTokensCount,
-                  modelUsed,
-                  fallbackPass,
-                  mode: 'agentic' as const,
-                  explorationTrail: [explorationStepRecord],
-                  thinkingContent: accumulatedThinking || undefined,
-                  costDetails: calculatedCost,
+                  modelUsed: serverModelUsed,
+                  fallbackPass: serverFallbackPass,
+                  mode,
                   inputTokens: calculatedCost.inputTokens,
                   outputTokens: calculatedCost.outputTokens,
                   totalCostUsd: calculatedCost.totalCostUsd,
-                  modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
+                  modelPricing: resolveModelPricing(serverModelUsed),
                 },
               }
             : m
@@ -520,11 +728,11 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
         setProgress({
           step: 'completed',
           message: 'Compilation complete',
-          explorationTrail: [explorationStepRecord],
           costDetails: calculatedCost,
           inputTokens: calculatedCost.inputTokens,
           outputTokens: calculatedCost.outputTokens,
         });
+      }
       } catch (err: unknown) {
       console.error('Compilation failed:', err);
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -637,32 +845,58 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
         {/* Controls: Mode Switcher, Status & Drawer Toggle */}
         <div className="flex items-center gap-3">
           {/* Mode Switcher Segmented Control */}
-          <div className="flex items-center bg-slate-900/90 border border-white/[0.08] rounded-lg p-0.5 text-xs">
+          <div className="flex items-center bg-slate-900/90 border border-white/[0.08] rounded-lg p-0.5 text-xs overflow-x-auto">
             <button
               type="button"
               onClick={() => handleToggleMode('agentic')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition whitespace-nowrap ${
                 mode === 'agentic'
                   ? 'bg-indigo-600 text-white font-medium shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
-              title="Agentic Sequential Exploration (Fast, low token overhead, targeted blast radius)"
+              title="Agentic Sequential Exploration"
             >
               <Compass className="w-3 h-3" />
-              <span>Agentic Loop</span>
+              <span>Agentic</span>
             </button>
             <button
               type="button"
               onClick={() => handleToggleMode('full')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition whitespace-nowrap ${
                 mode === 'full'
                   ? 'bg-indigo-600 text-white font-medium shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
-              title="Full Repository Ingestion (Downloads and packs all files in memory)"
+              title="Full Repository Ingestion"
             >
               <Layers className="w-3 h-3" />
-              <span>Full Repo</span>
+              <span>Full</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleMode('idea')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition whitespace-nowrap ${
+                mode === 'idea'
+                  ? 'bg-amber-600 text-white font-medium shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Ideas: Generates 77 ideas ranked by RICE & VRIN-EO"
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>Ideas</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleMode('btw')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition whitespace-nowrap ${
+                mode === 'btw'
+                  ? 'bg-emerald-600 text-white font-medium shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="BTW: Direct conversational codebase answers with @[/path] citations"
+            >
+              <HelpCircle className="w-3 h-3" />
+              <span>BTW</span>
             </button>
           </div>
 

@@ -1,3 +1,41 @@
+export type IngestionMode = 'agentic' | 'full' | 'idea' | 'btw';
+
+export interface VRINEScore {
+  value: number; // 1-10
+  relativity: number; // 1-10
+  inimitability: number; // 1-10
+  nonSubstitutability: number; // 1-10
+  engineOptimization: number; // 1-10
+  total: number;
+}
+
+export interface RICEScore {
+  reach: number;
+  impact: number;
+  confidence: number;
+  effort: number;
+  score: number;
+}
+
+export interface IdeaItem {
+  id: string;
+  title: string;
+  category: 'Feature' | 'Performance' | 'Architecture' | 'DX' | 'Security';
+  description: string;
+  rice: RICEScore;
+  vrinEo: VRINEScore;
+  compositeRank: number;
+  implementationHint: string;
+  targetedFiles: string[];
+}
+
+export interface BtwAnswer {
+  question: string;
+  answerMarkdown: string;
+  referencedFiles: string[];
+  confidenceScore: number;
+}
+
 export interface Repo {
   id: string;
   owner: string;
@@ -9,7 +47,7 @@ export interface Repo {
   defaultBranch: string;
   isPrivate: boolean;
   excludedPatterns?: string[];
-  preferredMode?: 'agentic' | 'full';
+  preferredMode?: IngestionMode;
 }
 
 export interface GitTreeItem {
@@ -54,7 +92,7 @@ export interface IngestionSnapshot {
   timestamp: number;
   treeListing: string;
   files: SourceFile[];
-  mode?: 'agentic' | 'full';
+  mode?: IngestionMode;
   explorationTrail?: ExplorationStep[];
   toolTraces?: RouterToolTrace[];
   costDetails?: ModelCostDetails;
@@ -62,6 +100,8 @@ export interface IngestionSnapshot {
   outputTokens?: number;
   totalCostUsd?: number;
   modelPricing?: ModelPricingTier;
+  ideas?: IdeaItem[];
+  btwAnswer?: BtwAnswer;
 }
 
 export interface RouterToolTrace {
@@ -106,7 +146,7 @@ export interface ChatMessage {
     branch: string;
     modelUsed?: string;
     fallbackPass?: number;
-    mode?: 'agentic' | 'full';
+    mode?: IngestionMode;
     explorationTrail?: ExplorationStep[];
     routerEngine?: string;
     routerLatencyMs?: number;
@@ -117,6 +157,8 @@ export interface ChatMessage {
     outputTokens?: number;
     totalCostUsd?: number;
     modelPricing?: ModelPricingTier;
+    ideas?: IdeaItem[];
+    btwAnswer?: BtwAnswer;
   };
 }
 
@@ -135,10 +177,11 @@ export interface AppSettings {
   githubPat?: string;
   customApiKey?: string;
   preferredModel?: string;
-  defaultMode?: 'agentic' | 'full';
+  defaultMode?: IngestionMode;
   maxAgenticRounds?: number;
   routerEngine?: RouterEngineType;
   models?: ModelConfig[];
+  requestTimeout?: number;
 }
 
 export interface IngestionProgress {
@@ -164,6 +207,7 @@ export interface IngestionProgress {
   costDetails?: ModelCostDetails;
   inputTokens?: number;
   outputTokens?: number;
+  progressPercent?: number;
 }
 
 export interface NextJsFileCard {
