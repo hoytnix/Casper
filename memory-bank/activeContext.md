@@ -1,8 +1,9 @@
-# Active Context: Configurable Max Agentic Rounds & Sequential Exploration Fix
+# Active Context: Dynamic Context-Aware Architectural Refactor Recommendations
 
 ## Active Focus
-Successfully resolved the agentic exploration round limitation bug:
-- **Server API Route (`/app/api/compile/route.ts`)**: Extracted `maxRounds` from the request body, bounded it safely via `Math.min(Math.max(1, Number(rawMaxRounds) || 3), 4)`, and updated the agentic iteration loop to execute up to `maxRounds`.
-- **Repo Workspace (`/components/RepoWorkspace.tsx`)**: Passed `maxRounds: settings.maxAgenticRounds || 3` into the initial exploration progress state and the `/api/compile` fetch payload.
-- **Step Loader (`/components/StepLoader.tsx`)**: Verified dynamic round badge rendering reflecting `Round {currentRound} of {maxRounds}`.
+Successfully transformed static mock arrays for Suggested Follow-up Refactors and empty-state prompt triggers into dynamic, context-aware architectural recommendations generated live by Gemini based on active repository structure and file snapshots:
+- **Types (`/types/index.ts`)**: Added `suggestedRefactors` to `ChatMessage`, `snapshotMeta`, and `SSEEventType`.
+- **API Route (`/app/api/compile/route.ts`)**: Extended `NEXTJS_EXPERT_SYSTEM_INSTRUCTION` and response parsing to extract `---SUGGESTED_REFACTORS---` JSON arrays from Gemini and emit `suggested_refactors` SSE events.
+- **Chat Compiler (`/components/ChatCompiler.tsx`)**: Replaced static prompt arrays and follow-up buttons with dynamic repo/snapshot-aware recommendations and AI-generated refactor pills.
 - **Verification**: Successful production compilation (`npm run build`) and zero ESLint errors (`npm run lint`).
+

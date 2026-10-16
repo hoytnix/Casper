@@ -114,12 +114,29 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
     }
   };
 
-  const SUGGESTED_PROMPTS = [
-    'Refactor state management into a clean custom hook architecture with strict TypeScript signatures.',
-    'Implement complete error boundaries, retry backoff logic, and Suspense fallbacks across the App Router.',
-    'Add strict Zod schemas to validate all Server Actions and Route Handlers with exhaustive type tests.',
-    'Upgrade UI to dark-mode glassmorphism with high-contrast typography and accessible keyboard controls.',
-  ];
+  const SUGGESTED_PROMPTS = React.useMemo(() => {
+    const files = snapshot?.files || [];
+    const hasApi = files.some(f => f.path.includes('api') || f.path.includes('route'));
+    const hasComponents = files.some(f => f.path.includes('components'));
+    const hasHooks = files.some(f => f.path.includes('hooks'));
+
+    if (files.length > 0) {
+      const prompts = [];
+      if (hasApi) prompts.push('Implement robust Zod validation schemas and error handling across all API route handlers.');
+      if (hasComponents) prompts.push('Optimize React Server Component boundaries and replace client state hooks with async Server Actions.');
+      if (hasHooks) prompts.push('Refactor global state stores into clean custom hooks with strict TypeScript type signatures.');
+      prompts.push('Implement comprehensive Suspense fallbacks, error boundaries, and loading skeletons across the App Router.');
+      prompts.push('Upgrade security headers, CSRF middleware, and rate-limiting across all Next.js endpoints.');
+      return prompts.slice(0, 4);
+    }
+
+    return [
+      `Refactor ${repo.repo} state management into clean custom hooks with strict TypeScript signatures.`,
+      'Implement complete error boundaries, retry backoff logic, and Suspense fallbacks across the App Router.',
+      'Add strict Zod schemas to validate all Server Actions and Route Handlers with exhaustive type tests.',
+      'Upgrade UI to dark-mode glassmorphism with high-contrast typography and accessible keyboard controls.',
+    ];
+  }, [repo, snapshot]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#07090e]/60 overflow-hidden">
@@ -409,12 +426,12 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                       <span>Suggested Follow-up Refactors</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {[
+                      {(msg.suggestedRefactors || msg.snapshotMeta?.suggestedRefactors || [
                         "Refactor all data-fetching to leverage React Server Components with parallel Suspense boundaries and granular error boundaries.",
                         "Implement rigorous Zod validation schemas across all Server Actions and Route Handlers with explicit type safety.",
                         "Optimize middleware and routing rules for secure role-based access control and edge caching.",
                         "Purge legacy client state by migrating global stores to searchParams/URL state and Server Actions.",
-                      ].map((promptText, idx) => (
+                      ]).map((promptText, idx) => (
                         <button
                           key={idx}
                           type="button"

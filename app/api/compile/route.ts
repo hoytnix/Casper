@@ -27,7 +27,10 @@ STRUCTURE OF THE COMPILED PROMPT:
 2. **Blast Radius & Target Manifest**: Every @[/path/to/file.ext] to be created, modified, or deleted and its Next.js role (\`app-page\`, \`app-layout\`, \`client-component\`, \`server-action\`, \`route-handler\`, etc.).
 3. **Step-by-Step Execution Choreography**: Atomic, ordered steps detailing Target @[/file/path], Server/Client boundary directives, Current vs. Target State, and exact Implementation Directives (referencing real props, hooks, types, and imports).
 4. **Dead Code & Redundancy Purge**: Explicit cleanup of unused imports, redundant client directives, obsolete types, or legacy routes caused by the changes.
-5. **Verification & Invariant Checks**: Exact terminal commands (\`npm run build\`, \`npm run lint\`) and runtime behavioral checks to verify completion.`;
+5. **Verification & Invariant Checks**: Exact terminal commands (\`npm run build\`, \`npm run lint\`) and runtime behavioral checks to verify completion.
+6. **Dynamic Follow-up Refactors**: At the very end of your response, append exactly this separator:
+---SUGGESTED_REFACTORS---
+Followed immediately by a valid JSON array of exactly 4 short, actionable architectural follow-up refactor prompts (strings) tailored specifically to the investigated codebase files and Next.js App Router best practices.`;
 
 const IDEA_MODE_SYSTEM_INSTRUCTION = `You are Next.js Expert Principal Product Architect. Your task is to analyze the provided Next.js repository, extract existing features, synthesize 77 innovative feature and architectural improvements, score them rigorously using RICE (Reach, Impact, Confidence, Effort) and VRIN-EO (Value, Relativity, Inimitability, Non-Substitutability & Engine-Optimization) frameworks, and present the top 7 highest-ranked ideas in clean, structured Markdown. Include a clear breakdown table of RICE and VRIN-EO metrics, implementation hints, and targeted file paths formatted as @[/path/to/file.ext].`;
 
@@ -50,6 +53,33 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMsg: string): Pr
       if (typeof timer.unref === 'function') timer.unref();
     }),
   ]);
+}
+
+function parseSuggestedRefactors(text: string): { cleanText: string; refactors: string[] } {
+  let cleanText = text;
+  let refactors: string[] = [];
+  const parts = text.split('---SUGGESTED_REFACTORS---');
+  if (parts.length > 1) {
+    cleanText = parts[0].trim();
+    try {
+      const jsonStr = parts[1].trim();
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed)) {
+        refactors = parsed.filter((r) => typeof r === 'string').slice(0, 4);
+      }
+    } catch (e) {
+      console.warn('Failed to parse JSON refactors:', e);
+    }
+  }
+  if (refactors.length === 0) {
+    refactors = [
+      'Refactor data-fetching to leverage React Server Components with parallel Suspense boundaries.',
+      'Implement rigorous Zod validation schemas across all Server Actions and Route Handlers.',
+      'Optimize middleware and routing rules for secure role-based access control and edge caching.',
+      'Purge legacy client state by migrating global stores to searchParams/URL state and Server Actions.',
+    ];
+  }
+  return { cleanText, refactors };
 }
 
 const inspectFilesToolDeclaration: FunctionDeclaration = {
@@ -521,7 +551,14 @@ ${treeListing}
               sendEvent({ type: 'thinking_end' });
             }
 
-            const estimatedOutputTokens = Math.max(1, Math.ceil(accumulatedPromptText.length / 4));
+            const { cleanText, refactors } = parseSuggestedRefactors(accumulatedPromptText);
+
+            sendEvent({
+              type: 'suggested_refactors',
+              refactors,
+            });
+
+            const estimatedOutputTokens = Math.max(1, Math.ceil(cleanText.length / 4));
             const costCalculation = calculateModelCost(streamModel, estimatedInputTokens, estimatedOutputTokens);
             const costDetails = {
               inputTokens: estimatedInputTokens,
@@ -546,6 +583,7 @@ ${treeListing}
               inputTokens: estimatedInputTokens,
               outputTokens: estimatedOutputTokens,
               costDetails,
+              suggestedRefactors: refactors,
             });
 
             controller.close();

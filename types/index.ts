@@ -139,6 +139,7 @@ export interface ChatMessage {
   timestamp: number;
   thinkingContent?: string;
   costDetails?: ModelCostDetails;
+  suggestedRefactors?: string[];
   snapshotMeta?: {
     filesCount: number;
     tokensCount: number; // Represents Input Context Tokens
@@ -161,6 +162,7 @@ export interface ChatMessage {
     modelPricing?: ModelPricingTier;
     ideas?: IdeaItem[];
     btwAnswer?: BtwAnswer;
+    suggestedRefactors?: string[];
   };
 }
 
@@ -277,6 +279,7 @@ export type SSEEventType =
   | 'thinking_chunk' 
   | 'thinking_end' 
   | 'prompt_chunk'
+  | 'suggested_refactors'
   | 'error' 
   | 'done';
 

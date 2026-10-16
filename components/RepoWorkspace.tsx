@@ -651,10 +651,43 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                         : m
                     )
                   );
+                } else if (evt.type === 'suggested_refactors') {
+                  const refactors = evt.refactors;
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsgId
+                        ? {
+                            ...m,
+                            suggestedRefactors: refactors,
+                            snapshotMeta: {
+                              ...m.snapshotMeta!,
+                              suggestedRefactors: refactors,
+                            },
+                          }
+                        : m
+                    )
+                  );
                 } else if (evt.type === 'done') {
                   modelUsed = evt.model || modelUsed;
                   fallbackPass = evt.pass || fallbackPass;
                   if (evt.inputTokens) serverInputTokens = evt.inputTokens;
+                  if (evt.suggestedRefactors) {
+                    const refactors = evt.suggestedRefactors;
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === assistantMsgId
+                          ? {
+                              ...m,
+                              suggestedRefactors: refactors,
+                              snapshotMeta: {
+                                ...m.snapshotMeta!,
+                                suggestedRefactors: refactors,
+                              },
+                            }
+                          : m
+                      )
+                    );
+                  }
                   const finalOutputTokens =
                     evt.outputTokens || Math.max(1, Math.ceil(accumulatedContent.length / 4));
                   if (evt.costDetails) {

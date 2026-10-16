@@ -17,10 +17,11 @@
 - [x] Configurable Request & Stream Timeout Setting
 - [x] Input Context Tokens & Metric Separation
 - [x] AST-Aware Incremental Repo Caching & Delta Ingestion
-- [x] **Configurable Max Agentic Rounds & Sequential Exploration Fix**:
-  - Updated `/app/api/compile/route.ts` to parse, bound, and execute up to configured `maxRounds` (1-4).
-  - Updated `/components/RepoWorkspace.tsx` to pass `maxRounds: settings.maxAgenticRounds || 3` into initial progress state and `/api/compile` fetch payload.
-  - Verified dynamic round counter rendering in `/components/StepLoader.tsx`.
+- [x] **Dynamic Context-Aware Architectural Refactor Recommendations**:
+  - Extended API route (`/app/api/compile/route.ts`) and system instruction to generate live AI refactor recommendations (`---SUGGESTED_REFACTORS---`).
+  - Added SSE event `suggested_refactors` and updated `ChatMessage` / `snapshotMeta` types (`/types/index.ts`).
+  - Replaced static prompts and follow-ups in `/components/ChatCompiler.tsx` and `/components/RepoWorkspace.tsx` with dynamic repo/snapshot-aware recommendations.
 
 ## Current Status
-Production-Ready. Configurable max agentic rounds and sequential exploration loops are fully operational, tested, and verified with clean builds and zero lint errors.
+Production-Ready. Dynamic context-aware architectural recommendations and live Gemini-generated follow-up refactors are fully operational, tested, and verified with successful production builds and zero lint errors.
+
