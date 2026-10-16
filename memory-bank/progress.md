@@ -14,15 +14,15 @@
 - [x] Dynamic API Cost Estimation & Model Pricing Engine (`/types/index.ts`, `/lib/utils.ts`)
 - [x] Gemini 4 Argon Support & Customizable Fallback Waterfall (`/types/index.ts`, `/lib/utils.ts`, `/components/SettingsModal.tsx`, `/hooks/useRepoStore.ts`)
 - [x] Drop-Dead Gorgeous Visual Design & Anti-Slop Elevation
-- [x] **Configurable Request & Stream Timeout Setting**:
-  - Added `requestTimeout` setting (15s to 300s range slider, default 60s) in `SettingsModal.tsx` and `AppSettings`.
-  - Upgraded API route (`@/app/api/compile/route.ts`) and workspace client (`@/components/RepoWorkspace.tsx`) to dynamically utilize the user-configured timeout across exploration, stream initiation, and first-chunk response timeouts.
-- [x] **UI Button Nomenclature & Embedded Model Progress Interstitial**:
-  - Updated workspace mode toggle buttons from "Idea Mode (Top 7)" and "btw Mode" to **"Ideas"** and **"BTW"**.
-  - Purged redundant "Default Compilation Strategy" settings section.
-  - Added live progress streaming callbacks (`onProgress`, `progressPercent`, and `StepLoader` progress bar) for `@mlc-ai/web-llm` and `@huggingface/transformers` downloads.
+- [x] Configurable Request & Stream Timeout Setting
+- [x] Input Context Tokens & Metric Separation
+- [x] **AST-Aware Incremental Repo Caching & Delta Ingestion**:
+  - Implemented `fetchRepoDelta` in `/lib/github.ts` comparing commit ranges via GitHub API.
+  - Built pure delta merge logic (`/lib/delta-sync.ts`) and verified with Node 22 native tests (`/lib/delta-sync.test.ts`).
+  - Added IndexedDB snapshot persistence (`/lib/snapshot-db.ts`) for caching full VFS source files and commit SHAs beyond `localStorage` quotas.
+  - Updated `/hooks/useRepoStore.ts` to hydrate snapshots on mount and synchronize commit SHAs.
+  - Integrated automated delta verification on repo open and branch selection in `/components/RepoWorkspace.tsx`, downloading only modified or added blobs and bypassing downloads entirely on identical commit SHAs.
+  - Added real-time `Delta Cache` status indicator pill to the workspace header.
 
 ## Current Status
-Production-Grade. Refined UI button nomenclature, cleaned settings modal, and robust live progress reporting for embedded local AI models fully operational and verified.
-
-
+Production-Ready. AST-Aware Incremental Repo Caching & Delta Ingestion is fully operational and persistent across browser sessions with verified unit tests, clean builds, and zero lint errors.

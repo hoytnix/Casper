@@ -215,10 +215,19 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                       {msg.snapshotMeta.mode === 'agentic' ? (
                         <span className="font-mono text-indigo-300">
                           Agentic Loop &middot; {msg.snapshotMeta.filesCount} targeted
+                          {msg.snapshotMeta.tokensCount > 0 && (
+                            <span> &middot; ~{msg.snapshotMeta.tokensCount.toLocaleString()} input tokens</span>
+                          )}
+                          {msg.snapshotMeta.outputTokensCount && (
+                            <span className="text-slate-400"> / ~{msg.snapshotMeta.outputTokensCount.toLocaleString()} out</span>
+                          )}
                         </span>
                       ) : (
                         <span className="font-mono text-indigo-300">
-                          {msg.snapshotMeta.filesCount} files &middot; ~{msg.snapshotMeta.tokensCount.toLocaleString()} tokens
+                          {msg.snapshotMeta.filesCount} files &middot; ~{msg.snapshotMeta.tokensCount.toLocaleString()} input tokens
+                          {msg.snapshotMeta.outputTokensCount && (
+                            <span className="text-slate-400 ml-1">/ ~{msg.snapshotMeta.outputTokensCount.toLocaleString()} out</span>
+                          )}
                         </span>
                       )}
 

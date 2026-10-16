@@ -1,14 +1,20 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
+import { useState, useEffect, useSyncExternalStore } from 'react';
 import { Repo, AppSettings, ChatMessage, IngestionSnapshot, ModelConfig } from '@/types';
 import { formatCompiledPrompt } from '@/lib/utils';
+import {
+  saveSnapshotToDB,
+  loadAllSnapshotsFromDB,
+  deleteSnapshotFromDB,
+} from '@/lib/snapshot-db';
 
 const STORAGE_KEYS = {
   REPOS: 'antigravity_repos_v1',
   SETTINGS: 'antigravity_settings_v1',
   ACTIVE_REPO_ID: 'antigravity_active_repo_id',
   CHATS_PREFIX: 'antigravity_chats_',
+  COMMIT_SHAS: 'antigravity_commit_shas_v1',
 };
 
 const DEFAULT_REPOS: Repo[] = [
@@ -174,6 +180,23 @@ export function useRepoStore() {
   const [chatHistory, setChatHistory] = useState<Record<string, ChatMessage[]>>({});
   const [snapshots, setSnapshots] = useState<Record<string, IngestionSnapshot>>({});
 
+  // Hydrate repository snapshots from IndexedDB on initial mount
+  useEffect(() => {
+    let isMounted = true;
+    loadAllSnapshotsFromDB()
+      .then((storedSnapshots) => {
+        if (!isMounted) return;
+        if (storedSnapshots && Object.keys(storedSnapshots).length > 0) {
+          setSnapshots((prev) => ({ ...storedSnapshots, ...prev }));
+        }
+      })
+      .catch((err) => console.warn('Failed to load snapshots from IndexedDB:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Save repos
   const saveRepos = (newRepos: Repo[]) => {
     setRepos(newRepos);
@@ -203,6 +226,25 @@ export function useRepoStore() {
     saveRepos(updated);
     if (activeRepoId === id) {
       setActiveRepoId(null);
+    }
+    // Clean up snapshot from in-memory state and IndexedDB
+    setSnapshots((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    deleteSnapshotFromDB(id).catch((e) =>
+      console.warn('Failed to delete snapshot from IndexedDB:', e)
+    );
+    try {
+      const storedShas = localStorage.getItem(STORAGE_KEYS.COMMIT_SHAS);
+      if (storedShas) {
+        const shaMap = JSON.parse(storedShas);
+        delete shaMap[id];
+        localStorage.setItem(STORAGE_KEYS.COMMIT_SHAS, JSON.stringify(shaMap));
+      }
+    } catch {
+      // fallback
     }
   };
 
@@ -305,6 +347,19 @@ export function useRepoStore() {
 
   const saveSnapshot = (repoId: string, snapshot: IngestionSnapshot) => {
     setSnapshots((prev) => ({ ...prev, [repoId]: snapshot }));
+    // Persist full snapshot with cached files to IndexedDB
+    saveSnapshotToDB(repoId, snapshot).catch((e) =>
+      console.warn('Failed to persist snapshot to IndexedDB:', e)
+    );
+    // Persist commit SHA to localStorage for fast delta checks
+    try {
+      const storedShas = localStorage.getItem(STORAGE_KEYS.COMMIT_SHAS);
+      const shaMap = storedShas ? JSON.parse(storedShas) : {};
+      shaMap[repoId] = snapshot.commitSha;
+      localStorage.setItem(STORAGE_KEYS.COMMIT_SHAS, JSON.stringify(shaMap));
+    } catch {
+      // fallback
+    }
   };
 
   const activeRepo = repos.find((r) => r.id === activeRepoId) || null;

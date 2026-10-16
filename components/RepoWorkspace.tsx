@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   GitBranch,
   FolderTree,
@@ -13,6 +13,7 @@ import {
   Coins,
   Sparkles,
   HelpCircle,
+  Zap,
 } from 'lucide-react';
 import {
   Repo,
@@ -33,6 +34,8 @@ import {
   shouldIncludeFile,
   downloadSourceFiles,
   assembleRepositoryContextPayload,
+  fetchRepoDelta,
+  applyFileDelta,
 } from '@/lib/github';
 import { warmUpLocalContextRouter, routeNextJsContext } from '@/lib/local-context-router';
 import { formatCostUsd, calculateModelCost, resolveModelPricing } from '@/lib/utils';
@@ -65,6 +68,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
   const [mode, setMode] = useState<IngestionMode>(
     repo.preferredMode || settings.defaultMode || 'agentic'
   );
+  const [deltaStatus, setDeltaStatus] = useState<
+    'idle' | 'checking' | 'cached' | 'syncing' | 'outdated'
+  >(snapshot?.commitSha ? 'cached' : 'idle');
 
   const [progress, setProgress] = useState<IngestionProgress>({
     step: 'idle',
@@ -88,14 +94,129 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
 
     // Pre-warm local AI router if snapshot files exist
     if (snapshot && snapshot.files && snapshot.files.length > 0) {
-      warmUpLocalContextRouter(snapshot.files, `${repo.owner}/${repo.repo}-${repo.branch}`, settings.routerEngine || 'auto')
-        .catch((e) => console.warn('Local router pre-warm note:', e));
+      warmUpLocalContextRouter(
+        snapshot.files,
+        `${repo.owner}/${repo.repo}-${repo.branch}`,
+        settings.routerEngine || 'auto'
+      ).catch((e) => console.warn('Local router pre-warm note:', e));
     }
 
     return () => {
       isMounted = false;
     };
   }, [repo.owner, repo.repo, settings.githubPat, repo.branch, settings.routerEngine, snapshot]);
+
+  const snapshotRef = useRef(snapshot);
+  const saveSnapshotRef = useRef(saveSnapshot);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
+
+  useEffect(() => {
+    saveSnapshotRef.current = saveSnapshot;
+  }, [saveSnapshot]);
+
+  // AST-Aware Incremental Delta Verification on Repo Open or Branch Selection
+  useEffect(() => {
+    let isCancelled = false;
+
+    const checkIncrementalDelta = async () => {
+      const snap = snapshotRef.current;
+      if (!snap?.commitSha || !snap.files || snap.files.length === 0) {
+        setDeltaStatus('idle');
+        return;
+      }
+
+      setDeltaStatus('checking');
+      try {
+        const { sha: latestSha } = await fetchRepoTree(
+          repo.owner,
+          repo.repo,
+          repo.branch,
+          settings.githubPat
+        );
+
+        if (isCancelled) return;
+
+        if (latestSha === snap.commitSha) {
+          setDeltaStatus('cached');
+          return;
+        }
+
+        // Remote commit is different: compare delta
+        const delta = await fetchRepoDelta(
+          repo.owner,
+          repo.repo,
+          snap.commitSha,
+          latestSha,
+          settings.githubPat
+        );
+
+        if (isCancelled) return;
+
+        if (delta.isFastForward) {
+          if (delta.modifiedFiles.length > 0) {
+            setDeltaStatus('syncing');
+            const modifiedEligible = delta.modifiedFiles.filter(
+              (f) =>
+                f.status !== 'removed' &&
+                shouldIncludeFile(f.path, undefined, repo.excludedPatterns)
+            );
+            const modifiedPaths = modifiedEligible.map((f) => f.path);
+
+            let freshModifiedFiles: SourceFile[] = [];
+            if (modifiedPaths.length > 0) {
+              freshModifiedFiles = await downloadSourceFiles(
+                repo.owner,
+                repo.repo,
+                repo.branch,
+                modifiedPaths.map((p) => ({ path: p, mode: '100644', type: 'blob' as const, sha: '', size: 0, url: '' })),
+                settings.githubPat
+              );
+            }
+
+            if (isCancelled) return;
+
+            const updatedFiles = applyFileDelta(
+              snap.files,
+              delta.modifiedFiles,
+              freshModifiedFiles
+            );
+            const updatedSnapshot: IngestionSnapshot = {
+              ...snap,
+              commitSha: latestSha,
+              files: updatedFiles,
+              includedFilesCount: updatedFiles.length,
+              timestamp: Date.now(),
+            };
+            saveSnapshotRef.current(repo.id, updatedSnapshot);
+            setDeltaStatus('cached');
+          } else {
+            // Fast forward without source changes
+            const updatedSnapshot: IngestionSnapshot = {
+              ...snap,
+              commitSha: latestSha,
+              timestamp: Date.now(),
+            };
+            saveSnapshotRef.current(repo.id, updatedSnapshot);
+            setDeltaStatus('cached');
+          }
+        } else {
+          setDeltaStatus('outdated');
+        }
+      } catch (err) {
+        console.warn('Delta background verification note:', err);
+        if (!isCancelled) setDeltaStatus('idle');
+      }
+    };
+
+    checkIncrementalDelta();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [repo.id, repo.owner, repo.repo, repo.branch, settings.githubPat, repo.excludedPatterns]);
 
   // Handle branch switch
   const handleBranchChange = (newBranch: string) => {
@@ -159,6 +280,67 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
       const treeListing = treeLines.join('\n');
 
       // ==========================================
+      // AST-AWARE INCREMENTAL DELTA CACHE & INGESTION
+      // ==========================================
+      const currentCommitSha = snapshot?.commitSha;
+      let activeFiles: SourceFile[] = snapshot?.files || [];
+      let deltaFetched = false;
+
+      if (currentCommitSha && activeFiles.length > 0) {
+        if (currentCommitSha === commitSha) {
+          // Exact match: 0 blob downloads required
+          setProgress((prev) => ({
+            ...prev,
+            message: `Snapshot matches remote HEAD (${commitSha.slice(0, 7)}). Zero file downloads required.`,
+          }));
+          deltaFetched = true;
+          setDeltaStatus('cached');
+        } else {
+          // Commit SHA changed: query GitHub compare API for incremental delta
+          setProgress((prev) => ({
+            ...prev,
+            message: `Comparing commits ${currentCommitSha.slice(0, 7)}...${commitSha.slice(0, 7)} for delta...`,
+          }));
+
+          const delta = await fetchRepoDelta(
+            repo.owner,
+            repo.repo,
+            currentCommitSha,
+            commitSha,
+            settings.githubPat
+          );
+
+          if (delta.isFastForward) {
+            const modifiedEligible = delta.modifiedFiles.filter(
+              (f) =>
+                f.status !== 'removed' &&
+                shouldIncludeFile(f.path, undefined, repo.excludedPatterns)
+            );
+            const modifiedPaths = modifiedEligible.map((f) => f.path);
+
+            let freshModifiedFiles: SourceFile[] = [];
+            if (modifiedPaths.length > 0) {
+              setProgress((prev) => ({
+                ...prev,
+                message: `Incremental delta detected: fetching ${modifiedPaths.length} modified/added blobs only...`,
+              }));
+              freshModifiedFiles = await downloadSourceFiles(
+                repo.owner,
+                repo.repo,
+                repo.branch,
+                modifiedPaths.map((p) => ({ path: p, mode: '100644', type: 'blob' as const, sha: '', size: 0, url: '' })),
+                settings.githubPat
+              );
+            }
+
+            activeFiles = applyFileDelta(activeFiles, delta.modifiedFiles, freshModifiedFiles);
+            deltaFetched = true;
+            setDeltaStatus('cached');
+          }
+        }
+      }
+
+      // ==========================================
       // IN-BROWSER AGENTIC CONTEXT ROUTER (Gemini Nano + Arctic-Embed-XS)
       // ==========================================
       if (mode === 'agentic') {
@@ -170,14 +352,19 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           explorationTrail: [],
         });
 
-        // Fetch sample source files for routing
-        const routingSampleFiles = await downloadSourceFiles(
-          repo.owner,
-          repo.repo,
-          repo.branch,
-          eligibleTreeItems.slice(0, 30), // Top 30 candidate files for local embedding
-          settings.githubPat
-        );
+        // Use cached activeFiles for routing sample if available, saving network overhead
+        let routingSampleFiles: SourceFile[] = [];
+        if (activeFiles.length > 0) {
+          routingSampleFiles = activeFiles.slice(0, 30);
+        } else {
+          routingSampleFiles = await downloadSourceFiles(
+            repo.owner,
+            repo.repo,
+            repo.branch,
+            eligibleTreeItems.slice(0, 30), // Top 30 candidate files for local embedding
+            settings.githubPat
+          );
+        }
 
         const routingResult = await routeNextJsContext(
           promptText,
@@ -209,14 +396,25 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           toolTraces,
         });
 
-        // Download full content for selected paths
-        const downloadedInvestigated = await downloadSourceFiles(
-          repo.owner,
-          repo.repo,
-          repo.branch,
-          eligibleTreeItems.filter((item) => targetedPaths.includes(item.path)),
-          settings.githubPat
-        );
+        // Resolve full content for selected paths from activeFiles cache or download only missing files
+        const existingPathMap = new Map<string, SourceFile>(activeFiles.map((f) => [f.path, f]));
+        const missingFromCache = targetedPaths.filter((p) => !existingPathMap.has(p));
+
+        if (missingFromCache.length > 0) {
+          const freshInvestigated = await downloadSourceFiles(
+            repo.owner,
+            repo.repo,
+            repo.branch,
+            eligibleTreeItems.filter((item) => missingFromCache.includes(item.path)),
+            settings.githubPat
+          );
+          freshInvestigated.forEach((f) => existingPathMap.set(f.path, f));
+          activeFiles = Array.from(existingPathMap.values());
+        }
+
+        const downloadedInvestigated = targetedPaths
+          .map((p) => existingPathMap.get(p))
+          .filter((f): f is SourceFile => !!f);
 
         const explorationStepRecord: ExplorationStep = {
           id: `local-router-${Date.now()}`,
@@ -229,6 +427,14 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           toolTraces,
         };
 
+        const contextSourceChars = downloadedInvestigated.reduce(
+          (acc, f) => acc + (f.content?.length || f.size || 0),
+          0
+        );
+        const estimatedInputChars =
+          treeListing.length + contextSourceChars + promptText.length + 500;
+        const initialInputTokens = Math.max(1, Math.ceil(estimatedInputChars / 4));
+
         const assistantMsgId = `assistant-${Date.now()}`;
         currentAssistantMsgId = assistantMsgId;
         const assistantMsg: ChatMessage = {
@@ -238,7 +444,8 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           timestamp: Date.now(),
           snapshotMeta: {
             filesCount: downloadedInvestigated.length,
-            tokensCount: 0,
+            tokensCount: initialInputTokens,
+            inputTokensCount: initialInputTokens,
             commitSha,
             branch: repo.branch,
             mode,
@@ -425,7 +632,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                             snapshotMeta: {
                               ...m.snapshotMeta!,
                               filesCount: investigatedCount,
-                              tokensCount: currentOutputTokens,
+                              tokensCount: serverInputTokens,
+                              inputTokensCount: serverInputTokens,
+                              outputTokensCount: currentOutputTokens,
                               modelUsed,
                               fallbackPass,
                               mode: 'agentic' as const,
@@ -477,25 +686,25 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               finalTokensCount
             );
 
-          // Save Snapshot with complete cost metrics
+          // Save Snapshot with complete cost metrics and cached activeFiles
           const agentSnapshot: IngestionSnapshot = {
             owner: repo.owner,
             repo: repo.repo,
             branch: repo.branch,
             commitSha,
             totalTreeBlobs: allBlobPaths.length,
-            includedFilesCount: downloadedInvestigated.length,
-            estimatedTokens: finalTokensCount,
-            charCount: accumulatedContent.length,
+            includedFilesCount: activeFiles.length > 0 ? activeFiles.length : downloadedInvestigated.length,
+            estimatedTokens: serverInputTokens,
+            charCount: estimatedInputChars,
+            inputTokens: serverInputTokens,
+            outputTokens: finalTokensCount,
             timestamp: Date.now(),
             treeListing,
-            files: downloadedInvestigated,
+            files: activeFiles.length > 0 ? activeFiles : downloadedInvestigated,
             mode: 'agentic' as const,
             explorationTrail: [explorationStepRecord],
             toolTraces,
             costDetails: calculatedCost,
-            inputTokens: calculatedCost.inputTokens,
-            outputTokens: calculatedCost.outputTokens,
             totalCostUsd: calculatedCost.totalCostUsd,
             modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
           };
@@ -513,7 +722,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                   snapshotMeta: {
                     ...m.snapshotMeta!,
                     filesCount: downloadedInvestigated.length,
-                    tokensCount: finalTokensCount,
+                    tokensCount: serverInputTokens,
+                    inputTokensCount: serverInputTokens,
+                    outputTokensCount: finalTokensCount,
                     modelUsed,
                     fallbackPass,
                     mode: 'agentic' as const,
@@ -542,25 +753,35 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
         // ==========================================
         // FULL INGESTION, IDEA MODE, OR BTW MODE
         // ==========================================
-        setProgress({
-          step: 'downloading_files',
-          message: mode === 'idea' ? 'Downloading files for AI Ideation & RICE scoring...' : mode === 'btw' ? 'Downloading files for codebase Q&A...' : 'Downloading full repository files in memory...',
-        });
+        let downloadedFiles: SourceFile[] = [];
+        if (deltaFetched && activeFiles.length > 0) {
+          downloadedFiles = activeFiles;
+          setProgress({
+            step: 'downloading_files',
+            message: `Loaded ${activeFiles.length} files from AST delta cache instantly...`,
+          });
+        } else {
+          setProgress({
+            step: 'downloading_files',
+            message: mode === 'idea' ? 'Downloading files for AI Ideation & RICE scoring...' : mode === 'btw' ? 'Downloading files for codebase Q&A...' : 'Downloading full repository files in memory...',
+          });
 
-        const filesToDownload = eligibleTreeItems.slice(0, 120);
-        const downloadedFiles = await downloadSourceFiles(
-          repo.owner,
-          repo.repo,
-          repo.branch,
-          filesToDownload,
-          settings.githubPat,
-          (loaded, total) => {
-            setProgress({
-              step: 'downloading_files',
-              message: `Downloaded ${loaded} of ${total} source files...`,
-            });
-          }
-        );
+          const filesToDownload = eligibleTreeItems.slice(0, 120);
+          downloadedFiles = await downloadSourceFiles(
+            repo.owner,
+            repo.repo,
+            repo.branch,
+            filesToDownload,
+            settings.githubPat,
+            (loaded, total) => {
+              setProgress({
+                step: 'downloading_files',
+                message: `Downloaded ${loaded} of ${total} source files...`,
+              });
+            }
+          );
+          activeFiles = downloadedFiles;
+        }
 
         const assembled = assembleRepositoryContextPayload(
           allBlobPaths,
@@ -581,6 +802,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           snapshotMeta: {
             filesCount: downloadedFiles.length,
             tokensCount: assembled.estimatedTokens,
+            inputTokensCount: assembled.estimatedTokens,
             commitSha,
             branch: repo.branch,
             mode,
@@ -661,7 +883,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                     snapshotMeta: {
                       ...m.snapshotMeta!,
                       filesCount: downloadedFiles.length,
-                      tokensCount: currentOutputTokens,
+                      tokensCount: serverInputTokens,
+                      inputTokensCount: serverInputTokens,
+                      outputTokensCount: currentOutputTokens,
                       modelUsed: serverModelUsed,
                       fallbackPass: serverFallbackPass,
                       mode,
@@ -686,15 +910,15 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           commitSha,
           totalTreeBlobs: allBlobPaths.length,
           includedFilesCount: downloadedFiles.length,
-          estimatedTokens: finalTokensCount,
+          estimatedTokens: serverInputTokens,
           charCount: assembled.charCount,
+          inputTokens: serverInputTokens,
+          outputTokens: finalTokensCount,
           timestamp: Date.now(),
           treeListing: assembled.treeListing,
           files: downloadedFiles,
           mode,
           costDetails: calculatedCost,
-          inputTokens: calculatedCost.inputTokens,
-          outputTokens: calculatedCost.outputTokens,
           totalCostUsd: calculatedCost.totalCostUsd,
           modelPricing: resolveModelPricing(serverModelUsed),
         };
@@ -711,7 +935,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                 snapshotMeta: {
                   ...m.snapshotMeta!,
                   filesCount: downloadedFiles.length,
-                  tokensCount: finalTokensCount,
+                  tokensCount: serverInputTokens,
+                  inputTokensCount: serverInputTokens,
+                  outputTokensCount: finalTokensCount,
                   modelUsed: serverModelUsed,
                   fallbackPass: serverFallbackPass,
                   mode,
@@ -839,6 +1065,39 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* AST-Aware Incremental Delta Cache Status */}
+          <div
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-white/[0.08] text-xs font-mono"
+            title={
+              snapshot?.commitSha
+                ? `IndexedDB Snapshot Commit SHA: ${snapshot.commitSha}\nCached Files in VFS: ${snapshot.files?.length || 0}`
+                : 'No cached snapshot in IndexedDB yet'
+            }
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-slate-400">Delta Cache:</span>
+            {deltaStatus === 'cached' && snapshot?.commitSha ? (
+              <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                {snapshot.commitSha.slice(0, 7)}
+              </span>
+            ) : deltaStatus === 'syncing' ? (
+              <span className="text-sky-400 flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Syncing...
+              </span>
+            ) : deltaStatus === 'checking' ? (
+              <span className="text-slate-400 flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Checking...
+              </span>
+            ) : snapshot?.commitSha ? (
+              <span className="text-slate-300">{snapshot.commitSha.slice(0, 7)}</span>
+            ) : (
+              <span className="text-slate-500">Uncached</span>
+            )}
           </div>
         </div>
 

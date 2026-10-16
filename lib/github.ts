@@ -269,7 +269,7 @@ export async function downloadSourceFiles(
   owner: string,
   repo: string,
   branch: string,
-  filesToDownload: GitTreeItem[],
+  filesToDownload: Array<{ path: string; mode?: string; type?: string; sha?: string; size?: number; url?: string }>,
   pat: string | undefined,
   onProgress?: (loaded: number, total: number) => void
 ): Promise<SourceFile[]> {
@@ -477,4 +477,66 @@ export async function fetchFilesOnDemand(
   );
   return results;
 }
+
+export async function fetchRepoDelta(
+  owner: string,
+  repo: string,
+  lastSha: string,
+  currentSha: string,
+  pat?: string
+): Promise<{ modifiedFiles: Array<{ path: string; status: string }>; isFastForward: boolean }> {
+  if (lastSha === currentSha) {
+    return { modifiedFiles: [], isFastForward: true };
+  }
+
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3+json',
+  };
+  if (pat && pat.trim()) {
+    headers.Authorization = `Bearer ${pat.trim()}`;
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/compare/${encodeURIComponent(lastSha)}...${encodeURIComponent(currentSha)}`,
+      { headers }
+    );
+
+    if (!res.ok) {
+      // If compare fails (e.g. force push, truncated history, or 404), fall back to full tree sync
+      return { modifiedFiles: [], isFastForward: false };
+    }
+
+    const data = await res.json();
+    const files = Array.isArray(data.files)
+      ? data.files.map((f: { filename?: string; status?: string }) => ({
+          path: f.filename || '',
+          status: f.status || 'modified',
+        })).filter((f: { path: string }) => !!f.path)
+      : [];
+
+    return {
+      modifiedFiles: files,
+      isFastForward: data.status === 'identical' || data.ahead_by >= 0 || data.status === 'ahead',
+    };
+  } catch (err) {
+    console.warn('fetchRepoDelta error, falling back to full sync:', err);
+    return { modifiedFiles: [], isFastForward: false };
+  }
+}
+
+export function applyFileDelta(
+  activeFiles: SourceFile[],
+  modifiedFiles: Array<{ path: string; status: string }>,
+  freshModifiedFiles: SourceFile[]
+): SourceFile[] {
+  const removedPaths = new Set(
+    modifiedFiles.filter((f) => f.status === 'removed').map((f) => f.path)
+  );
+  const fileMap = new Map<string, SourceFile>(activeFiles.map((f) => [f.path, f]));
+  removedPaths.forEach((p) => fileMap.delete(p));
+  freshModifiedFiles.forEach((f) => fileMap.set(f.path, f));
+  return Array.from(fileMap.values());
+}
+
 

@@ -141,7 +141,9 @@ export interface ChatMessage {
   costDetails?: ModelCostDetails;
   snapshotMeta?: {
     filesCount: number;
-    tokensCount: number;
+    tokensCount: number; // Represents Input Context Tokens
+    inputTokensCount?: number;
+    outputTokensCount?: number;
     commitSha: string;
     branch: string;
     modelUsed?: string;

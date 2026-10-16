@@ -177,9 +177,16 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
         </div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-slate-400">Context Tokens:</span>
-          <span className="font-mono font-bold text-violet-300">
-            ~{snapshot ? snapshot.estimatedTokens.toLocaleString() : '0'} tokens
-          </span>
+          <div className="text-right">
+            <span className="font-mono font-bold text-violet-300">
+              ~{snapshot ? snapshot.estimatedTokens.toLocaleString() : '0'} tokens
+            </span>
+            {snapshot?.outputTokens && snapshot.outputTokens > 0 && (
+              <span className="block text-[10px] font-mono text-slate-500">
+                Output: ~{snapshot.outputTokens.toLocaleString()} tokens
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-slate-400">Commit SHA:</span>
