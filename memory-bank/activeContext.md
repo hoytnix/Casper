@@ -1,18 +1,24 @@
-# Active Context: CashierModal Stub Resolution & Build Guardrail
+# Active Context: Cashier & NOWPayments Removal (100% Free Application)
 
 ## Active Focus
-Resolved Vercel deployment error `Can't resolve '@/components/CashierModal'` by creating a no-op stub component `components/CashierModal.tsx`.
+Completely removed all Cashier and NOWPayments payment gateway methods, UI controls, and references, resolving the Vercel TypeScript build error:
+`Type '{ isOpen: boolean; onClose: () => void; settings: AppSettings; onSaveSettings: (newSettings: Partial<AppSettings>) => void; }' is not assignable to type 'IntrinsicAttributes'`.
 
 ## Implementation Details
-1. **`components/CashierModal.tsx`**:
-   - Added a lightweight, dependency-free stub component (`return null`).
-   - Supports both default and named imports (`import CashierModal` and `import { CashierModal }`).
-   - Ensures Webpack and Next.js can resolve `@/components/CashierModal` without throwing module resolution errors during Vercel builds, even if legacy code or cache references it.
-2. **Now Payments Cleanup**:
-   - Confirmed zero references or dependencies on `@nowpaymentsio/nowpayments-sdk-nodejs`.
+1. **`app/page.tsx`**:
+   - Removed `CashierModal` import and usage.
+   - Removed `isCashierModalOpen` state and `onOpenCashier` prop binding.
+2. **`components/Header.tsx`**:
+   - Removed `onOpenCashier` prop from `HeaderProps` interface and component signature.
+   - Removed Cashier button and `Coins` icon from top header navigation.
+3. **`components/CashierModal.tsx`**:
+   - Updated stub to accept optional arbitrary props (`_props?: Record<string, unknown>`), ensuring that any lingering cache on Vercel or external build tools compiles cleanly with zero TypeScript errors.
+4. **Zero Payment Gateways**:
+   - Confirmed application is 100% free with no payment SDKs, endpoints, or cashier modals.
 
 ## Verification
-- `compile_applet`: Successful production build (0 errors).
+- `compile_applet`: Production build passed with 0 errors.
+- `lint_applet`: ESLint validation passed with 0 warnings or errors.
 
 
 

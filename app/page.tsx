@@ -7,7 +7,6 @@ import { RepoGrid } from '@/components/RepoGrid';
 import { RepoWorkspace } from '@/components/RepoWorkspace';
 import { AddRepoModal } from '@/components/AddRepoModal';
 import { SettingsModal } from '@/components/SettingsModal';
-import { CashierModal } from '@/components/CashierModal';
 import { OfflineIndicator } from '@/components/OfflineIndicator';
 import { Loader2 } from 'lucide-react';
 
@@ -31,7 +30,6 @@ export default function HomePage() {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isCashierModalOpen, setIsCashierModalOpen] = useState(false);
 
   if (!isLoaded) {
     return (
@@ -49,7 +47,6 @@ export default function HomePage() {
         onBackToGrid={() => selectRepo(null)}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
-        onOpenCashier={() => setIsCashierModalOpen(true)}
         hasPat={!!settings.githubPat}
       />
 
@@ -90,13 +87,6 @@ export default function HomePage() {
         onClose={() => setIsSettingsModalOpen(false)}
         settings={settings}
         onSave={updateSettings}
-      />
-
-      <CashierModal
-        isOpen={isCashierModalOpen}
-        onClose={() => setIsCashierModalOpen(false)}
-        settings={settings}
-        onSaveSettings={updateSettings}
       />
 
       <OfflineIndicator />

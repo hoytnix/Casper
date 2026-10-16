@@ -20,9 +20,13 @@
    - Set cascading fallback models to user-requested order: (1) Gemini 3.5 Flash, (2) Gemini 3.8 Flash, (3) Gemini 3.5 Flash-Lite.
    - Added direct ingestion of client pre-routed `investigatedFiles` and robust fallback extraction.
 - [x] Verified `compile_applet` and `lint_applet` with 0 errors.
+- [x] **Complete Removal of Cashier & NOWPayments (Free App Confirmation)**:
+   - Removed Cashier modal and trigger states from `app/page.tsx`.
+   - Removed Cashier button and `Coins` icon from `components/Header.tsx`.
+   - Updated `components/CashierModal.tsx` stub with optional prop handling to prevent any Vercel cache type mismatch.
 
 ## Current Status
-Production Ready. Added `components/CashierModal.tsx` stub component so Vercel builds resolve any `@/components/CashierModal` imports without failure. Verified build.
+Production Ready. All payment gateway references, Cashier modal invocations, and build-breaking TypeScript errors resolved. App operates 100% free with clean production builds.
 
 
 

@@ -1,7 +1,7 @@
 'use client';
 
-// Harmless stub component to ensure Next.js / Webpack builds resolve cleanly
-export function CashierModal() {
+// Deprecated stub: Next.js Expert is 100% free with no cashier or payment gateway.
+export function CashierModal(_props?: Record<string, unknown>) {
   return null;
 }
 

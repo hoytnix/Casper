@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Layers, Settings, Plus, ArrowLeft, Coins } from 'lucide-react';
+import { Layers, Settings, Plus, ArrowLeft } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { Repo } from '@/types';
 
@@ -10,7 +10,6 @@ interface HeaderProps {
   onBackToGrid: () => void;
   onOpenAddModal: () => void;
   onOpenSettings: () => void;
-  onOpenCashier: () => void;
   hasPat: boolean;
 }
 
@@ -19,7 +18,6 @@ export const Header: React.FC<HeaderProps> = ({
   onBackToGrid,
   onOpenAddModal,
   onOpenSettings,
-  onOpenCashier,
   hasPat,
 }) => {
   return (
@@ -72,15 +70,6 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Action Controls */}
         <div className="flex items-center gap-2 sm:gap-3">
           <PWAInstallButton />
-
-          <button
-            onClick={onOpenCashier}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-xs font-medium transition"
-            title="NOW Payments Cashier & Gateway"
-          >
-            <Coins className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">Cashier</span>
-          </button>
 
           <button
             onClick={onOpenSettings}
