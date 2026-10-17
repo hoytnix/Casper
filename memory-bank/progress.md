@@ -14,16 +14,12 @@
 - [x] Dynamic API Cost Estimation & Model Pricing Engine (`/types/index.ts`, `/lib/utils.ts`)
 - [x] Gemini 4 Argon Support & Customizable Fallback Waterfall (`/types/index.ts`, `/lib/utils.ts`, `/components/SettingsModal.tsx`, `/hooks/useRepoStore.ts`)
 - [x] Drop-Dead Gorgeous Visual Design & Anti-Slop Elevation
-- [x] Configurable Request & Stream Timeout Setting
-- [x] Input Context Tokens & Metric Separation
-- [x] AST-Aware Incremental Repo Caching & Delta Ingestion
-- [x] Dynamic Context-Aware Architectural Refactor Recommendations
-- [x] Clean SUGGESTED_REFACTORS Delimiter Splicing & Elimination of Mocked Follow-up Suggestions
 - [x] Token Costs Over Time & Token Spending Analytics Tracker with Real Data DB
-- [x] **Automated Prompt Expense Logging & Mock Seed Data Removal**:
-  - Automatically records token cost records (`TokenCostRecord`) into `localStorage` (`nextjs_expert_token_records_v1`) and `/api/finance` upon successful prompt compilation completion.
-  - Purged all mock seed data from finances (`/app/api/finance/route.ts` and `FinanceWorkspace`) and linked deletion to the server API endpoint (`DELETE /api/finance`).
+- [x] Automated Prompt Expense Logging & Mock Seed Data Removal
+- [x] **Permalinks, Header Cleanup & Screen Height Fit**:
+  - Implemented `/chat/[owner]/[repo]` permalink route with auto-resolution from GitHub API for bookmarking favorite repositories.
+  - Removed capability text from the header.
+  - Configured strict `h-screen flex flex-col overflow-hidden` layouts with inner `overflow-y-auto` scroll areas.
 
 ## Current Status
-Production-Ready. Automated prompt expense logging active on every successful compilation, all mock seed data purged from finances with fully functional record deletion and backend sync. Zero ESLint errors, clean build, and synchronized Memory Bank.
-
+Production-Ready. Permalinks active, clean header, screen-height responsive layout with zero document scrollbars, automated prompt expense logging, and fully synchronized Memory Bank.

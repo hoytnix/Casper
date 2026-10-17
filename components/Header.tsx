@@ -58,24 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Zone 2: Navigation Links / Architecture capabilities */}
-        <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-400">
-          <span className="hover:text-slate-200 transition-colors whitespace-nowrap shrink-0">
-            App Router Cartography
-          </span>
-          <span className="text-slate-700" aria-hidden="true">&bull;</span>
-          <span className="hover:text-slate-200 transition-colors whitespace-nowrap shrink-0">
-            Server Component Graph
-          </span>
-          <span className="text-slate-700" aria-hidden="true">&bull;</span>
-          <span className="hover:text-slate-200 transition-colors whitespace-nowrap shrink-0">
-            In-Memory Unix VFS
-          </span>
-          <span className="text-slate-700" aria-hidden="true">&bull;</span>
-          <span className="hover:text-slate-200 transition-colors whitespace-nowrap shrink-0">
-            Gemini 4 Argon
-          </span>
-        </nav>
+
 
         {/* Zone 3: Action Controls */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">

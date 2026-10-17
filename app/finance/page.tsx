@@ -9,9 +9,9 @@ export const metadata = {
 
 export default function FinancePage() {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div className="h-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden selection:bg-indigo-500/30 selection:text-indigo-200">
       <FinanceHeader />
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8 overflow-y-auto min-h-0">
         <FinanceWorkspace />
       </main>
     </div>

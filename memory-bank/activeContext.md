@@ -1,10 +1,7 @@
-# Active Context: Automated Prompt Expense Logging & Mock Seed Data Removal
+# Active Context: Permalinks, Header Cleanup & Screen Height Optimization
 
 ## Active Focus
-Implemented automated expense logging at the end of each prompt compilation and purged all mock seed data from finances with full deletion capability:
-- **Automated Prompt Expense Logging (`/components/RepoWorkspace.tsx`)**:
-  - Automatically records token cost records (`TokenCostRecord`) into `localStorage` (`nextjs_expert_token_records_v1`) and `/api/finance` upon successful prompt compilation completion.
-- **Purge of Mock Seed Data & Deletion Fix (`/app/api/finance/route.ts`, `/components/FinanceWorkspace.tsx`)**:
-  - Emptied `mockTokenRecords` in `/api/finance/route.ts` and added robust filtering in `FinanceWorkspace` to purge any legacy mock seed items on initialization.
-  - Linked `handleDeleteRecord` in `FinanceWorkspace` to call `DELETE /api/finance?id=...` for persistent server-side state synchronization.
-
+Implemented user-requested layout and navigation enhancements:
+- **Permalinks (`/chat/[owner]/[repo]`)**: Added dynamic App Router route allowing users to visit and bookmark favorite repositories directly via URLs like `/chat/hoytnix/return` (with auto-resolution from GitHub API if not already in store).
+- **Header Cleanup**: Removed the capability pills (`App Router Cartography • Server Component Graph • In-Memory Unix VFS • Gemini 4 Argon`) from the top header.
+- **Screen Height & Scroll Optimization**: Locked app root, workspace, and chat containers to `h-screen flex flex-col overflow-hidden` with dedicated inner scrolling (`overflow-y-auto`) for messages and grids, preventing unnecessary document-level huge scroll bars.
