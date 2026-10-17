@@ -786,6 +786,59 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           );
           saveMessages(repo.id, finalMessages);
 
+          // Automatically log expense into token cost records ledger / finance DB
+          try {
+            const FINANCE_STORAGE_KEY = 'nextjs_expert_token_records_v1';
+            const tokenRecord = {
+              id: `tok-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              repoName: `${repo.owner}/${repo.repo}`,
+              modelName: modelUsed || calculatedCost.modelName || 'gemini-4-argon',
+              inputTokens: calculatedCost.inputTokens,
+              outputTokens: calculatedCost.outputTokens,
+              totalCostUsd: calculatedCost.totalCostUsd,
+              date: new Date().toISOString().split('T')[0],
+              notes: `Prompt compilation (${mode} mode): "${promptText.slice(0, 50)}..."`,
+              title: `${repo.owner}/${repo.repo} compilation`,
+              amount: calculatedCost.totalCostUsd,
+              category: modelUsed || calculatedCost.modelName || 'gemini-4-argon',
+              type: 'expense' as const,
+            };
+
+            const existingStored = localStorage.getItem(FINANCE_STORAGE_KEY);
+            let existingRecords = [];
+            if (existingStored) {
+              const parsed = JSON.parse(existingStored);
+              if (Array.isArray(parsed)) {
+                // Clean any legacy mock records as well
+                existingRecords = parsed.filter((r: any) => {
+                  if (!r.id) return false;
+                  const isLegacyMockId = /^tok-([1-9]|10)$/.test(r.id);
+                  const isLegacyMockRepo = ['facebook/react', 'vercel/next.js', 'tailwindlabs/tailwindcss', 'shadcn/ui', 'supabase/supabase'].includes(r.repoName) && r.date?.startsWith('2026-05-');
+                  return !(isLegacyMockId || isLegacyMockRepo);
+                });
+              }
+            }
+            const updatedLedger = [tokenRecord, ...existingRecords];
+            localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(updatedLedger));
+
+            // Also post to API route
+            fetch('/api/finance', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                repoName: `${repo.owner}/${repo.repo}`,
+                modelName: modelUsed || calculatedCost.modelName || 'gemini-4-argon',
+                inputTokens: calculatedCost.inputTokens,
+                outputTokens: calculatedCost.outputTokens,
+                totalCostUsd: calculatedCost.totalCostUsd,
+                date: new Date().toISOString().split('T')[0],
+                notes: `Prompt compilation (${mode} mode): "${promptText.slice(0, 50)}..."`,
+              }),
+            }).catch(() => {});
+          } catch (autoLogError) {
+            console.warn('Failed to auto-log token expense:', autoLogError);
+          }
+
           setProgress({
             step: 'completed',
             message: 'Compilation complete',

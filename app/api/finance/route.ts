@@ -13,19 +13,7 @@ const createTokenRecordSchema = z.object({
   notes: z.string().optional(),
 });
 
-// Seed data simulating realistic Gemini prompt compilation and agentic exploration token costs over time
-let mockTokenRecords: TokenCostRecord[] = [
-  { id: 'tok-1', repoName: 'facebook/react', modelName: 'gemini-4-argon', inputTokens: 52400, outputTokens: 8900, totalCostUsd: 0.2850, date: '2026-05-01', notes: 'Initial Agentic exploration & compilation' },
-  { id: 'tok-2', repoName: 'vercel/next.js', modelName: 'gemini-2.5-pro', inputTokens: 142000, outputTokens: 18500, totalCostUsd: 1.1450, date: '2026-05-03', notes: 'Server Actions & App Router optimization prompt' },
-  { id: 'tok-3', repoName: 'tailwindlabs/tailwindcss', modelName: 'gemini-3.8-flash', inputTokens: 18500, outputTokens: 3200, totalCostUsd: 0.0430, date: '2026-05-05', notes: 'Quick styling prompt generation' },
-  { id: 'tok-4', repoName: 'shadcn/ui', modelName: 'gemini-3.6-flash', inputTokens: 35000, outputTokens: 7100, totalCostUsd: 0.0980, date: '2026-05-08', notes: 'Component system refactor choreography' },
-  { id: 'tok-5', repoName: 'vercel/next.js', modelName: 'gemini-4-argon', inputTokens: 98000, outputTokens: 14200, totalCostUsd: 0.5420, date: '2026-05-12', notes: 'Multi-step agentic graph verification' },
-  { id: 'tok-6', repoName: 'facebook/react', modelName: 'gemini-3.5-flash-lite', inputTokens: 15000, outputTokens: 2500, totalCostUsd: 0.0220, date: '2026-05-15', notes: 'Quick Q&A codebase question (BTW mode)' },
-  { id: 'tok-7', repoName: 'vercel/next.js', modelName: 'gemini-2.5-pro', inputTokens: 165000, outputTokens: 21000, totalCostUsd: 1.3400, date: '2026-05-18', notes: 'Full deep architecture prompt compilation' },
-  { id: 'tok-8', repoName: 'supabase/supabase', modelName: 'gemini-4-argon', inputTokens: 74000, outputTokens: 11500, totalCostUsd: 0.4120, date: '2026-05-22', notes: 'Database schema & RLS policy generation' },
-  { id: 'tok-9', repoName: 'shadcn/ui', modelName: 'gemini-3.8-flash', inputTokens: 29000, outputTokens: 5400, totalCostUsd: 0.0680, date: '2026-05-25', notes: 'Idea mode feature ideation (77 ideas RICE)' },
-  { id: 'tok-10', repoName: 'vercel/next.js', modelName: 'gemini-4-argon', inputTokens: 112000, outputTokens: 16800, totalCostUsd: 0.6240, date: '2026-05-28', notes: 'Final production build & verification prompt' },
-];
+let mockTokenRecords: TokenCostRecord[] = [];
 
 export async function GET() {
   try {

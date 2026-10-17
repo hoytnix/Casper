@@ -1,12 +1,10 @@
-# Active Context: Deprecation of Full Ingestion & Multi-Round Exploration Fix
+# Active Context: Automated Prompt Expense Logging & Mock Seed Data Removal
 
 ## Active Focus
-Successfully deprecated legacy full-repository ingestion mode across the application, unified all three modes (Prompt, Ideas, and BTW) into the high-performance agentic exploration pipeline, and fixed the multi-round exploration loop counter bug:
-- **Deprecating Full-Ingestion Mode (`/types/index.ts`, `/components/RepoWorkspace.tsx`, `/app/api/compile/route.ts`)**:
-  - Purged `'full'` from `IngestionMode` type union and removed the monolithic 120-blob download fallback branch.
-  - Unified all modes (`'agentic'` displayed as **Prompt**, `'idea'`, `'btw'`) to run through the agentic Unix VFS exploration and streaming pipeline.
-- **Multi-Round Exploration Bug Fix (`/app/api/compile/route.ts`, `/components/RepoWorkspace.tsx`, `/components/SettingsModal.tsx`)**:
-  - Refactored `app/api/compile/route.ts` so pre-routed client files seed context while the model iteratively expands its blast radius across rounds 1..$N$ (up to `maxRounds`, e.g. Round 1 of 4).
-  - Dynamically linked `maxRounds` to `settings.maxAgenticRounds` (defaulting up to 4) instead of hardcoding `maxRounds: 1`.
-- **UI & Store Cleanup (`/components/ContextInspector.tsx`, `/components/SettingsModal.tsx`, `/hooks/useRepoStore.ts`)**:
-  - Cleaned up strategy displays to reflect "Graph-Aware Agentic VFS" and added sanitizer for legacy `defaultMode === 'full'`.
+Implemented automated expense logging at the end of each prompt compilation and purged all mock seed data from finances with full deletion capability:
+- **Automated Prompt Expense Logging (`/components/RepoWorkspace.tsx`)**:
+  - Automatically records token cost records (`TokenCostRecord`) into `localStorage` (`nextjs_expert_token_records_v1`) and `/api/finance` upon successful prompt compilation completion.
+- **Purge of Mock Seed Data & Deletion Fix (`/app/api/finance/route.ts`, `/components/FinanceWorkspace.tsx`)**:
+  - Emptied `mockTokenRecords` in `/api/finance/route.ts` and added robust filtering in `FinanceWorkspace` to purge any legacy mock seed items on initialization.
+  - Linked `handleDeleteRecord` in `FinanceWorkspace` to call `DELETE /api/finance?id=...` for persistent server-side state synchronization.
+

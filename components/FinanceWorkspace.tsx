@@ -32,7 +32,16 @@ export const FinanceWorkspace: React.FC = () => {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          // Filter out legacy mock seed records if any remain in localStorage
+          const realRecords = parsed.filter((r: TokenCostRecord) => {
+            if (!r.id) return false;
+            const isLegacyMockId = /^tok-([1-9]|10)$/.test(r.id);
+            const isLegacyMockRepo = ['facebook/react', 'vercel/next.js', 'tailwindlabs/tailwindcss', 'shadcn/ui', 'supabase/supabase'].includes(r.repoName) && r.date?.startsWith('2026-05-');
+            return !(isLegacyMockId || isLegacyMockRepo);
+          });
+          return realRecords;
+        }
       }
     } catch {
       // fallback
@@ -69,7 +78,13 @@ export const FinanceWorkspace: React.FC = () => {
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
-            setTokenRecords(parsed);
+            const realRecords = parsed.filter((r: TokenCostRecord) => {
+              if (!r.id) return false;
+              const isLegacyMockId = /^tok-([1-9]|10)$/.test(r.id);
+              const isLegacyMockRepo = ['facebook/react', 'vercel/next.js', 'tailwindlabs/tailwindcss', 'shadcn/ui', 'supabase/supabase'].includes(r.repoName) && r.date?.startsWith('2026-05-');
+              return !(isLegacyMockId || isLegacyMockRepo);
+            });
+            setTokenRecords(realRecords);
           }
         }
       } catch {
@@ -77,18 +92,20 @@ export const FinanceWorkspace: React.FC = () => {
       }
     };
     window.addEventListener('storage', handleStorageChange);
-    // Also load on interval or mount
     handleStorageChange();
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const handleDeleteRecord = (id: string) => {
+  const handleDeleteRecord = async (id: string) => {
     if (!confirm('Are you sure you want to delete this token cost record?')) return;
     setDeletingId(id);
     try {
       const updated = tokenRecords.filter((r) => r.id !== id);
       setTokenRecords(updated);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+
+      // Call API endpoint to delete on server side as well
+      await fetch(`/api/finance?id=${id}`, { method: 'DELETE' });
     } catch (e) {
       console.warn('Failed to delete record:', e);
     } finally {
