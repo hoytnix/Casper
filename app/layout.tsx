@@ -21,30 +21,30 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Next.js Expert - AI-Powered Next.js Architecture & Context Compiler',
+  title: 'Casper - AI-Powered Architecture & Context Compiler',
   description:
-    'AI-Powered Next.js Architecture & Context Compiler specializing in App Router conventions, React Server Components, Server Actions, Route Handlers, and TypeScript.',
+    'AI-Powered Codebase Architecture & Context Compiler specializing in Next.js App Router, Hono edge services, React Server Components, Server Actions, Route Handlers, and TypeScript.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'NextExpert',
+    title: 'Casper',
   },
   icons: {
     icon: '/icon.svg',
     apple: '/apple-touch-icon.png',
   },
   openGraph: {
-    title: 'Next.js Expert - AI-Powered Next.js Architecture & Context Compiler',
+    title: 'Casper - AI-Powered Architecture & Context Compiler',
     description:
-      'AI-Powered Next.js Architecture & Context Compiler specializing in App Router conventions, React Server Components, Server Actions, Route Handlers, and TypeScript.',
+      'AI-Powered Codebase Architecture & Context Compiler specializing in Next.js App Router, Hono edge services, React Server Components, Server Actions, Route Handlers, and TypeScript.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Next.js Expert - AI-Powered Next.js Architecture & Context Compiler',
+    title: 'Casper - AI-Powered Architecture & Context Compiler',
     description:
-      'AI-Powered Next.js Architecture & Context Compiler specializing in App Router conventions, React Server Components, Server Actions, Route Handlers, and TypeScript.',
+      'AI-Powered Codebase Architecture & Context Compiler specializing in Next.js App Router, Hono edge services, React Server Components, Server Actions, Route Handlers, and TypeScript.',
   },
 };
 

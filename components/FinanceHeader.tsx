@@ -20,7 +20,7 @@ export const FinanceHeader: React.FC = () => {
                 <Layers className="w-3.5 h-3.5 text-sky-400 group-hover:scale-105 transition-transform" />
               </div>
             </div>
-            <span className="text-slate-300 font-semibold hidden sm:inline">Next.js Expert</span>
+            <span className="text-slate-300 font-semibold hidden sm:inline">Casper 👻</span>
           </Link>
           <span className="text-slate-600" aria-hidden="true">/</span>
           <div className="flex items-center gap-1.5 text-white font-semibold text-xs sm:text-sm">

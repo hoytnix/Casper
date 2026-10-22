@@ -1,4 +1,4 @@
-# Active Context: Dual-Framework Cartography (Next.js + Hono)
+# Active Context: Casper Rebrand + Dual-Framework Cartography (Next.js + Hono)
 
 ## Active Focus
 Implemented Next.js/Hono dual-mode repository cartography:

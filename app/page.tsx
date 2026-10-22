@@ -30,7 +30,7 @@ export default function HomePage() {
     return (
       <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-3 overflow-hidden">
         <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
-        <p className="text-xs font-mono text-slate-400">Loading Next.js Expert...</p>
+        <p className="text-xs font-mono text-slate-400">Loading Casper... 👻</p>
       </div>
     );
   }

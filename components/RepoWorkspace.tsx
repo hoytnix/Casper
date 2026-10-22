@@ -482,7 +482,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
         // ==========================================
         setProgress({
           step: 'compiling_prompt',
-          message: `Synthesizing Next.js Expert execution prompt via ${routerEngineUsed} (${routerLatencyMs}ms)...`,
+          message: `Synthesizing Casper execution prompt via ${routerEngineUsed} (${routerLatencyMs}ms)...`,
           explorationTrail: [explorationStepRecord],
         });
 

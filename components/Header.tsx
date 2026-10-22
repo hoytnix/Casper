@@ -52,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               </div>
               <span className="text-base font-bold tracking-tight text-white">
-                Next.js <span className="bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">Expert</span>
+                Casper <span className="bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">👻</span>
               </span>
             </button>
           )}

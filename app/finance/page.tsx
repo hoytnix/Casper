@@ -3,7 +3,7 @@ import { FinanceWorkspace } from '@/components/FinanceWorkspace';
 import { FinanceHeader } from '@/components/FinanceHeader';
 
 export const metadata = {
-  title: 'Token Costs Over Time & Token Spending Analytics - Next.js Expert',
+  title: 'Token Costs Over Time & Token Spending Analytics - Casper',
   description: 'Track API token consumption, model inference expenses, and spending over time for your Gemini code compilation sessions.',
 };
 

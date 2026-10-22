@@ -154,13 +154,13 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
 
             <div className="space-y-2.5">
               <h3 className="text-xl font-bold text-white tracking-tight">
-                Compile Execution Directives for{' '}
+                Casper is ready to compile execution directives for{' '}
                 <span className="text-indigo-300 font-mono">
                   {repo.owner}/{repo.repo}
                 </span>
               </h3>
               <p className="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto leading-relaxed text-balance">
-                Enter your requested improvements or architectural refactors. The compiler inspects the repository tree, executes in-memory Unix VFS tools, and produces an Antigravity-ready step-by-step choreography with exact <code className="text-indigo-300 bg-slate-900/90 px-1.5 py-0.5 rounded font-mono text-xs">@[/paths]</code>.
+                Casper the friendly ghost reads all ur code lol, traverses the repository tree, executes in-memory Unix VFS tools, and produces an Antigravity-ready step-by-step choreography with exact <code className="text-indigo-300 bg-slate-900/90 px-1.5 py-0.5 rounded font-mono text-xs">@[/paths]</code>.
               </p>
             </div>
 

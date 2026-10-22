@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Next.js Expert",
-  "short_name": "NextExpert",
-  "description": "AI-Powered Next.js Architecture & Context Compiler for Next.js App Router, React Server Components, Server Actions, Route Handlers, and TypeScript.",
+  "name": "Casper",
+  "short_name": "Casper",
+  "description": "AI-Powered Architecture & Context Compiler for Next.js App Router, Hono edge services, React Server Components, Server Actions, Route Handlers, and TypeScript.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

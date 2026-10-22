@@ -219,7 +219,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Next.js Expert utilizes an in-browser local context router to instantly index repository skeletons (~20 tokens/file) and route relevant file paths in milliseconds without sending raw code bodies to cloud APIs.
+              Casper utilizes an in-browser local context router to instantly index repository skeletons (~20 tokens/file) and route relevant file paths in milliseconds without sending raw code bodies to cloud APIs.
             </p>
           </div>
 

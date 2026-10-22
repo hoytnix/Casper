@@ -9,7 +9,7 @@ export default function NotFound() {
         href="/"
         className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 transition"
       >
-        Return to Next.js Expert
+        Return to Casper 👻
       </Link>
     </div>
   );

@@ -49,12 +49,12 @@ export const RepoGrid: React.FC<RepoGridProps> = ({
             <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight text-balance">
               Compile Bulletproof Next.js Architecture Prompts with{' '}
               <span className="bg-gradient-to-r from-sky-400 via-indigo-300 to-indigo-400 bg-clip-text text-transparent">
-                Next.js Expert
+                Casper 👻
               </span>
             </h2>
 
             <p className="text-slate-400 text-sm leading-relaxed max-w-xl">
-              Connect any Next.js repository. Next.js Expert inspects your App Router structure, Server/Client Component boundaries, Server Actions, and Route Handlers with zero CORS friction—leveraging in-memory Unix VFS tools and Gemini 4 Argon to compile high-precision prompts for autonomous coding agents.
+              Connect any Next.js repository. Casper the friendly ghost reads all ur code lol — inspecting your App Router structure, Server/Client Component boundaries, Server Actions, and Route Handlers with zero CORS friction, leveraging in-memory Unix VFS tools and Gemini 4 Argon to compile high-precision prompts for autonomous coding agents.
             </p>
 
             {/* Unboxed Metadata Strip (Zero-Pill Discipline with Typographic Separators) */}

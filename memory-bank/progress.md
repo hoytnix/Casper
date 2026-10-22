@@ -1,4 +1,4 @@
-# Progress: Next.js Expert - Drop-Dead Gorgeous Design & Architectural Cartography
+# Progress: Casper - Drop-Dead Gorgeous Design & Architectural Cartography
 
 ## Completed Modules
 - [x] Memory Bank initialized and synchronized across all sessions
@@ -28,6 +28,13 @@
   - Hono-aware local context router (scope notes + scoring boosts) and dual-framework compile instructions (Hono Expert vs. Next.js Expert)
   - Detected-framework badge in workspace sub-header with persistence
   - Verified: `tsc --noEmit` clean, `eslint` clean on all touched files, `next build` green, 19/19 behavioral probe checks pass (`/tmp/fw-probe/run.mjs`)
+
+- [x] **Full Rebrand to "Casper" (the friendly ghost who reads all ur code lol)**:
+  - Root metadata + viewport title (`/app/layout.tsx`), PWA manifest (`/public/manifest.json`), `/metadata.json`, finance page title
+  - Header + finance header branding (`/components/Header.tsx`, `/components/FinanceHeader.tsx`)
+  - Casper persona in all 6 compile system instructions (`/app/api/compile/route.ts`); routing invariants + Zod/formatting rules intact
+  - Welcome state (`/components/ChatCompiler.tsx`), repo grid hero, settings note, workspace progress message, 404, loading fallback, deprecated stub
+  - Verified: `eslint` clean, `next build` green (typecheck included), zero lingering `Next.js Expert` / `NextExpert` / `Hono Expert` references in app code
 
 ## Current Status
 Production-Ready. Dual-framework (Next.js + Hono) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, and fully synchronized Memory Bank.
