@@ -29,6 +29,11 @@
   - Detected-framework badge in workspace sub-header with persistence
   - Verified: `tsc --noEmit` clean, `eslint` clean on all touched files, `next build` green, 19/19 behavioral probe checks pass (`/tmp/fw-probe/run.mjs`)
 
+- [x] **Dedicated Settings Page (`/settings`) Replacing the Modal**:
+  - New full-width App Router page (`/app/settings/page.tsx`) with responsive 1→3 column grid: model priority/fallback waterfall, local AI context router engine + warm-up, GitHub PAT, custom API key, exploration rounds, and request timeout — all persisted via `useRepoStore.updateSettings`.
+  - `/components/Header.tsx` settings control is now a `<Link href="/settings">` (removed `onOpenSettings`, optional `onOpenAddModal`); `/components/SettingsModal.tsx` deleted; modal state/JSX purged from `/app/page.tsx` and `/app/chat/[owner]/[repo]/page.tsx`.
+  - Verified: `eslint` clean on all touched files, `next build` green with `/settings` prerendered as static content.
+
 - [x] **Full Rebrand to "Casper" (the friendly ghost who reads all ur code lol)**:
   - Root metadata + viewport title (`/app/layout.tsx`), PWA manifest (`/public/manifest.json`), `/metadata.json`, finance page title
   - Header + finance header branding (`/components/Header.tsx`, `/components/FinanceHeader.tsx`)

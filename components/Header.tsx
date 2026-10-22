@@ -9,8 +9,7 @@ import { Repo } from '@/types';
 interface HeaderProps {
   activeRepo: Repo | null;
   onBackToGrid: () => void;
-  onOpenAddModal: () => void;
-  onOpenSettings: () => void;
+  onOpenAddModal?: () => void;
   hasPat: boolean;
 }
 
@@ -18,7 +17,6 @@ export const Header: React.FC<HeaderProps> = ({
   activeRepo,
   onBackToGrid,
   onOpenAddModal,
-  onOpenSettings,
   hasPat,
 }) => {
   return (
@@ -73,21 +71,20 @@ export const Header: React.FC<HeaderProps> = ({
 
           <PWAInstallButton />
 
-          <button
-            onClick={onOpenSettings}
+          <Link
+            href="/settings"
             className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-medium transition whitespace-nowrap shrink-0 ${
               hasPat
                 ? 'border-white/[0.08] bg-slate-900/60 text-slate-300 hover:text-white hover:border-white/20'
                 : 'border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
             }`}
             title="Configure GitHub PAT & Gemini Model Settings"
-            aria-label="Settings"
           >
             <Settings className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Settings</span>
-          </button>
+          </Link>
 
-          {!activeRepo && (
+          {!activeRepo && onOpenAddModal && (
             <button
               onClick={onOpenAddModal}
               className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm hover:shadow-indigo-500/25 active:scale-95 transition whitespace-nowrap shrink-0"

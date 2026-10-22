@@ -1,6 +1,11 @@
-# Active Context: Casper Rebrand + Dual-Framework Cartography (Next.js + Hono)
+# Active Context: Casper Rebrand + Dual-Framework Cartography (Next.js + Hono) + Dedicated Settings Page
 
 ## Active Focus
+Implemented dedicated full-width settings page (`/app/settings/page.tsx`, permalink `/settings`):
+- **Settings Modal Removal**: Deleted `/components/SettingsModal.tsx`; all GitHub PAT, custom API key, model priority waterfall, router engine, warm-up, rounds, and timeout controls now live on the `/settings` page in a responsive 1→3 column grid.
+- **Header Navigation**: `/components/Header.tsx` settings button is now a Next.js `<Link href="/settings">`; removed the `onOpenSettings` prop (made `onOpenAddModal` optional) and updated all callers (`/app/page.tsx`, `/app/chat/[owner]/[repo]/page.tsx`), which also dropped modal state and `<SettingsModal />` JSX.
+- Verified: `eslint` clean on all touched files, `next build` green (types valid, `/settings` prerendered as static).
+
 Implemented Next.js/Hono dual-mode repository cartography:
 - **Permalinks (`/chat/[owner]/[repo]`)**: Added dynamic App Router route allowing users to visit and bookmark favorite repositories directly via URLs like `/chat/hoytnix/return` (with auto-resolution from GitHub API if not already in store).
 - **Header Cleanup**: Removed the capability pills (`App Router Cartography • Server Component Graph • In-Memory Unix VFS • Gemini 4 Argon`) from the top header.

@@ -6,7 +6,6 @@ import { useRepoStore } from '@/hooks/useRepoStore';
 import { Header } from '@/components/Header';
 import { RepoWorkspace } from '@/components/RepoWorkspace';
 import { AddRepoModal } from '@/components/AddRepoModal';
-import { SettingsModal } from '@/components/SettingsModal';
 import { OfflineIndicator } from '@/components/OfflineIndicator';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { Repo } from '@/types';
@@ -24,7 +23,6 @@ export default function ChatRepoPage() {
     addRepo,
     updateRepo,
     selectRepo,
-    updateSettings,
     loadMessages,
     saveMessages,
     clearMessages,
@@ -37,7 +35,6 @@ export default function ChatRepoPage() {
   const [fetchedRepo, setFetchedRepo] = useState<Repo | null>(null);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   const existingRepo = repos.find(
     (r) =>
@@ -156,7 +153,6 @@ export default function ChatRepoPage() {
           router.push('/');
         }}
         onOpenAddModal={() => setIsAddModalOpen(true)}
-        onOpenSettings={() => setIsSettingsModalOpen(true)}
         hasPat={!!settings.githubPat}
       />
 
@@ -179,13 +175,6 @@ export default function ChatRepoPage() {
         onClose={() => setIsAddModalOpen(false)}
         onAddRepo={addRepo}
         githubPat={settings.githubPat}
-      />
-
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        settings={settings}
-        onSave={updateSettings}
       />
 
       <OfflineIndicator />

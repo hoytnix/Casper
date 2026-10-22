@@ -6,7 +6,6 @@ import { useRepoStore } from '@/hooks/useRepoStore';
 import { Header } from '@/components/Header';
 import { RepoGrid } from '@/components/RepoGrid';
 import { AddRepoModal } from '@/components/AddRepoModal';
-import { SettingsModal } from '@/components/SettingsModal';
 import { OfflineIndicator } from '@/components/OfflineIndicator';
 import { Loader2 } from 'lucide-react';
 import { Repo } from '@/types';
@@ -20,11 +19,9 @@ export default function HomePage() {
     addRepo,
     deleteRepo,
     selectRepo,
-    updateSettings,
   } = useRepoStore();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   if (!isLoaded) {
     return (
@@ -54,7 +51,6 @@ export default function HomePage() {
         activeRepo={null}
         onBackToGrid={() => selectRepo(null)}
         onOpenAddModal={() => setIsAddModalOpen(true)}
-        onOpenSettings={() => setIsSettingsModalOpen(true)}
         hasPat={!!settings.githubPat}
       />
 
@@ -74,13 +70,6 @@ export default function HomePage() {
         onClose={() => setIsAddModalOpen(false)}
         onAddRepo={handleAddRepo}
         githubPat={settings.githubPat}
-      />
-
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        settings={settings}
-        onSave={updateSettings}
       />
 
       <OfflineIndicator />
