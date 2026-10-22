@@ -68,14 +68,100 @@ const HONO_IDEA_MODE_SYSTEM_INSTRUCTION = `You are Casper, the friendly ghost wh
 
 const HONO_BTW_MODE_SYSTEM_INSTRUCTION = `You are Casper, the friendly ghost who reads all your code — Codebase Assistant. Answer the developer's question directly and authoritatively using the provided repository context. Explain routing architecture, middleware chains, or validator/RPC data flows clearly. Cite files explicitly using @[/path/to/file.ext] format. Do not generate Antigravity prompt templates; provide direct, actionable technical answers.`;
 
-// Cascading Fallback Strategy: Incorporating Gemini 4 Argon as primary tier
+// Cascading Fallback Strategy: Muse Spark tiers first, then Gemini flagships.
+// Muse-tagged models route to the Muse API via Bearer-token auth; all others use the Google GenAI SDK.
 const DEFAULT_CASCADING_MODELS = [
+  'muse-spark-1.3-contributor',
+  'muse-spark-1.3',
   'gemini-4-argon',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-3.8-flash',
   'gemini-3.5-flash-lite',
 ] as const;
+
+// Muse API transport (edge-safe: standard fetch + ReadableStream only, no Node APIs).
+// Base URL is operator-configurable; the default endpoint is unconfirmed and may need
+// to be overridden via MUSE_API_BASE_URL if Muse publishes a different chat-completions host.
+const MUSE_API_BASE_URL = (process.env.MUSE_API_BASE_URL || 'https://api.muse.ai/v1').replace(/\/+$/, '');
+
+function isMuseModelTag(tag: unknown): boolean {
+  const norm = String(tag || '').toLowerCase().trim();
+  return norm.startsWith('muse-') || norm === 'muse' || norm.includes('muse-spark') || norm.includes('muse');
+}
+
+/**
+ * Streams a Muse Spark chat completion as an async generator yielding
+ * Gemini-shaped `{ candidates: [{ content: { parts: [{ text }] } }] }` chunks
+ * so the shared SSE pipeline below can consume either provider identically.
+ */
+async function* streamMuseCompletionChunks(args: {
+  apiKey: string;
+  model: string;
+  systemInstruction: string;
+  prompt: string;
+  temperature: number;
+  timeoutMs: number;
+}): AsyncGenerator<{ candidates: { content: { parts: { text: string }[] } }[] }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), args.timeoutMs);
+  if (typeof (timer as unknown as { unref?: unknown }).unref === 'function') {
+    (timer as unknown as { unref: () => void }).unref();
+  }
+  try {
+    const res = await fetch(`${MUSE_API_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${args.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: args.model,
+        stream: true,
+        temperature: args.temperature,
+        messages: [
+          { role: 'system', content: args.systemInstruction },
+          { role: 'user', content: args.prompt },
+        ],
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Muse API error (${res.status}): ${errText.slice(0, 300)}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const frames = buf.split('\n\n');
+      buf = frames.pop() || '';
+      for (const frame of frames) {
+        for (const line of frame.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const payload = trimmed.slice(5).trim();
+          if (payload === '[DONE]') return;
+          try {
+            const json = JSON.parse(payload);
+            const delta: unknown =
+              json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.message?.content ?? '';
+            if (typeof delta === 'string' && delta.length > 0) {
+              yield { candidates: [{ content: { parts: [{ text: delta }] } }] };
+            }
+          } catch {
+            // Partial JSON frame mid-stream — ignore and keep buffering.
+          }
+        }
+      }
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMsg: string): Promise<T> {
   return Promise.race([
@@ -126,6 +212,8 @@ export async function POST(req: NextRequest) {
       treeListing,
       improvementPrompt,
       customApiKey,
+      customMuseApiKey,
+      museApiKey: bodyMuseApiKey,
       githubPat,
       maxRounds: rawMaxRounds = 3,
       repositoryContext, // For fallback legacy full mode
@@ -157,11 +245,25 @@ export async function POST(req: NextRequest) {
     }
 
     const apiKey = customApiKey?.trim() || process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    // Handle model initialization branching for muse-spark-1.3 & muse-spark-1.3-contributor:
+    // per-request Settings key wins, shared MUSE_API_KEY env is the server fallback.
+    const museKey =
+      customMuseApiKey?.trim() || bodyMuseApiKey?.trim() || process.env.MUSE_API_KEY;
+    const wantsMuseOnly = cascadingModels.length > 0 && cascadingModels.every(isMuseModelTag);
+    if (!apiKey && !wantsMuseOnly) {
       return NextResponse.json(
         {
           error:
             'Gemini API key is not configured. Please ensure GEMINI_API_KEY is available or provide a custom key in Settings.',
+        },
+        { status: 500 }
+      );
+    }
+    if (wantsMuseOnly && !museKey) {
+      return NextResponse.json(
+        {
+          error:
+            'Muse API key is not configured. Please add your Muse AI API key in Settings or set MUSE_API_KEY.',
         },
         { status: 500 }
       );
@@ -240,6 +342,12 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
             let activeModel = '';
             let activePass = 1;
 
+            // Muse Spark models stream synthesis only — Gemini function-calling
+            // (inspect_files) cannot run against muse- tags, so exploration stays
+            // on the Gemini subset. A muse-only cascade skips straight to fallback
+            // context + Muse synthesis streaming below.
+            const explorationModels = cascadingModels.filter((m) => !isMuseModelTag(m));
+
             for (let round = 1; round <= maxRounds; round++) {
               sendEvent({
                 type: 'agent_round',
@@ -251,7 +359,7 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
               let exploreResult: unknown = null;
 
               for (let pass = 1; pass <= 2; pass++) {
-                for (const model of cascadingModels) {
+                for (const model of explorationModels) {
                   try {
                     const response = await withTimeout(
                       ai.models.generateContent({
@@ -475,6 +583,45 @@ ${treeListing}
 
             for (let pass = 1; pass <= 2; pass++) {
               for (const model of cascadingModels) {
+                // Muse Spark tags route to the Muse API with key authorization
+                // headers; a missing key (or Muse failure) cascades onward.
+                if (isMuseModelTag(model)) {
+                  if (pass > 1) continue;
+                  if (!museKey) {
+                    console.warn(
+                      `[Prompt Stream Cascade] ${model} skipped in Pass ${pass}: no Muse API key configured (Settings → Muse AI API Key or MUSE_API_KEY).`
+                    );
+                    continue;
+                  }
+                  try {
+                    const museIterator = streamMuseCompletionChunks({
+                      apiKey: museKey,
+                      model,
+                      systemInstruction: systemInstructionToUse,
+                      prompt: finalPromptPayload,
+                      temperature: mode === 'idea' ? 0.4 : 0.2,
+                      timeoutMs,
+                    })[Symbol.asyncIterator]();
+                    const firstResult = await withTimeout(
+                      museIterator.next(),
+                      timeoutMs,
+                      `Model ${model} first chunk timed out after ${requestTimeout}s`
+                    );
+                    if (firstResult.done) {
+                      throw new Error(`Model ${model} returned an empty stream`);
+                    }
+                    streamResponse = {
+                      firstChunk: firstResult.value,
+                      iterator: museIterator,
+                    };
+                    streamModel = model;
+                    streamPass = pass;
+                    break;
+                  } catch (err) {
+                    console.warn(`[Prompt Stream Cascade] ${model} failed in Pass ${pass}:`, err);
+                    continue;
+                  }
+                }
                 for (const useThinking of [true, false]) {
                   try {
                     const config: any = {

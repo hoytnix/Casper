@@ -498,6 +498,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             investigatedFiles: downloadedInvestigated,
             improvementPrompt: promptText,
             customApiKey: settings.customApiKey,
+            customMuseApiKey: settings.museApiKey,
             githubPat: settings.githubPat,
             routerEngine: routerEngineUsed,
             models: settings.models,

@@ -25,6 +25,43 @@ test('calculateModelCost calculates exact fractional token costs', () => {
   assert.equal(cost.modelName, 'Gemini 4 Argon');
 });
 
+test('resolveModelPricing correctly identifies Muse Spark tiers', () => {
+  const contributor = resolveModelPricing('muse-spark-1.3-contributor');
+  assert.equal(contributor.name, 'Muse Spark 1.3 Contributor');
+  assert.equal(contributor.inputCostPerMillion, 0.10);
+  assert.equal(contributor.outputCostPerMillion, 0.20);
+
+  const standard = resolveModelPricing('muse-spark-1.3');
+  assert.equal(standard.name, 'Muse Spark 1.3');
+  assert.equal(standard.inputCostPerMillion, 1.25);
+  assert.equal(standard.outputCostPerMillion, 4.25);
+
+  // Tag casing, display-name spacing, and bare muse- prefixes resolve identically
+  assert.equal(resolveModelPricing('MUSE-SPARK-1.3').name, 'Muse Spark 1.3');
+  assert.equal(resolveModelPricing('Muse Spark 1.3 Contributor').name, 'Muse Spark 1.3 Contributor');
+  assert.equal(resolveModelPricing('muse-spark-1.3-contributor').name, 'Muse Spark 1.3 Contributor');
+});
+
+test('calculateModelCost computes exact Muse Spark costs at whole-million tokens', () => {
+  const cost = calculateModelCost('muse-spark-1.3', 1000000, 1000000);
+  assert.equal(cost.inputTokens, 1000000);
+  assert.equal(cost.outputTokens, 1000000);
+  assert.equal(cost.inputCostUsd, 1.25);
+  assert.equal(cost.outputCostUsd, 4.25);
+  assert.equal(cost.modelName, 'Muse Spark 1.3');
+  assert.ok(Math.abs(cost.totalCostUsd - 5.5) < 1e-9);
+});
+
+test('calculateModelCost computes exact Muse contributor costs at half-million tokens', () => {
+  const cost = calculateModelCost('muse-spark-1.3-contributor', 500000, 500000);
+  assert.equal(cost.inputTokens, 500000);
+  assert.equal(cost.outputTokens, 500000);
+  assert.equal(cost.inputCostUsd, 0.05);
+  assert.equal(cost.outputCostUsd, 0.1);
+  assert.equal(cost.modelName, 'Muse Spark 1.3 Contributor');
+  assert.ok(Math.abs(cost.totalCostUsd - 0.15) < 1e-9);
+});
+
 test('formatCostUsd handles sub-cent precision and zero cleanly', () => {
   assert.equal(formatCostUsd(0), '$0.0000 USD');
   assert.equal(formatCostUsd(0.04), '$0.0400 USD');

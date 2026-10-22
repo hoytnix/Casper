@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import type { ModelPricingTier } from "@/types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -106,6 +107,8 @@ export function formatCompiledPrompt(content: string): string {
 
 /**
  * Dynamic Model Pricing Tiers ($ per 1 Million Tokens)
+ * - Muse Spark 1.3 Contributor: $0.10/M input, $0.20/M output
+ * - Muse Spark 1.3: $1.25/M input, $4.25/M output
  * - Gemini 4 Argon: $2.00/M input, $10.00/M output ($4/M & $20/M after Nov 30, 2026)
  * - Gemini 3.8 Flash: $0.75/M input, $3.75/M output
  * - Gemini 3.5 Flash: $1.50/M input, $9.00/M output
@@ -116,7 +119,17 @@ const isAfterNov30_2026 = typeof window !== 'undefined' || typeof process !== 'u
   ? new Date() > new Date('2026-11-30T23:59:59Z')
   : false;
 
-export const MODEL_PRICING_TIERS: Record<string, { name: string; inputCostPerMillion: number; outputCostPerMillion: number }> = {
+export const MODEL_PRICING_TIERS: Record<string, ModelPricingTier> = {
+  'muse-spark-1.3-contributor': {
+    name: 'Muse Spark 1.3 Contributor',
+    inputCostPerMillion: 0.10,
+    outputCostPerMillion: 0.20,
+  },
+  'muse-spark-1.3': {
+    name: 'Muse Spark 1.3',
+    inputCostPerMillion: 1.25,
+    outputCostPerMillion: 4.25,
+  },
   'gemini-4-argon': {
     name: 'Gemini 4 Argon',
     inputCostPerMillion: isAfterNov30_2026 ? 4.00 : 2.00,
@@ -147,8 +160,14 @@ export const MODEL_PRICING_TIERS: Record<string, { name: string; inputCostPerMil
 /**
  * Normalizes and resolves a given model string to its corresponding pricing tier.
  */
-export function resolveModelPricing(modelName: string): { name: string; inputCostPerMillion: number; outputCostPerMillion: number } {
-  const norm = (modelName || '').toLowerCase().replace(/^(models\/)/, '');
+export function resolveModelPricing(modelName: string): ModelPricingTier {
+  const norm = (modelName || '').toLowerCase().replace(/^(models\/)/, '').replace(/[\s_]+/g, '-');
+  if (norm.includes('contributor')) {
+    return MODEL_PRICING_TIERS['muse-spark-1.3-contributor'];
+  }
+  if (norm.includes('muse-spark-1.3') || norm.includes('muse-spark') || norm.startsWith('muse-') || norm === 'muse' || norm.includes('muse')) {
+    return MODEL_PRICING_TIERS['muse-spark-1.3'];
+  }
   if (norm.includes('argon') || norm.includes('gemini-4') || norm.includes('gemini-4-argon')) {
     return MODEL_PRICING_TIERS['gemini-4-argon'];
   }

@@ -42,4 +42,13 @@
   - Verified: `eslint` clean, `next build` green (typecheck included), zero lingering `Next.js Expert` / `NextExpert` / `Hono Expert` references in app code
 
 ## Current Status
-Production-Ready. Dual-framework (Next.js + Hono) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, and fully synchronized Memory Bank.
+Production-Ready. Dual-framework (Next.js + Hono) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, Muse Spark cascade integration, and fully synchronized Memory Bank.
+
+## Completed Modules (cont.)
+- [x] **Muse Spark Model Integration (`muse-spark-1.3-contributor` + `muse-spark-1.3`)**:
+  - Pricing tiers + tag resolver (`/lib/utils.ts`); `AppSettings.museApiKey` + cached pricing field (`/types/index.ts`)
+  - Defaults at cascade priorities 1–2 with stored-settings backfill (`/hooks/useRepoStore.ts`)
+  - Muse AI API Key field + priority controls (`/app/settings/page.tsx`); key forwarded by client (`/components/RepoWorkspace.tsx`)
+  - Dual-provider cascade in compile route (`/app/api/compile/route.ts`): Bearer-key Muse SSE streaming, Gemini-only tool exploration, graceful skip/fallback
+  - Verified: `node --test lib/utils.test.ts` 10/10 (3 new), `tsc --noEmit` clean, `eslint` clean, `next build` green
+  - Open item: default `MUSE_API_BASE_URL` (`https://api.muse.ai/v1`) is unconfirmed — override via env if Muse publishes a different chat-completions host

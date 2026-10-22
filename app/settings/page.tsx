@@ -28,6 +28,7 @@ export default function SettingsPage() {
 
   const [pat, setPat] = useState(settings.githubPat || '');
   const [apiKey, setApiKey] = useState(settings.customApiKey || '');
+  const [museApiKey, setMuseApiKey] = useState(settings.museApiKey || '');
   const [maxRounds, setMaxRounds] = useState<number>(settings.maxAgenticRounds || 3);
   const [requestTimeout, setRequestTimeout] = useState<number>(settings.requestTimeout || 60);
   const [routerEngine, setRouterEngine] = useState<RouterEngineType>(settings.routerEngine || 'auto');
@@ -39,8 +40,16 @@ export default function SettingsPage() {
   const [models, setModels] = useState<ModelConfig[]>(() => {
     if (settings.models && settings.models.length > 0) {
       let list = [...settings.models];
-      if (!list.some((m) => m.id === 'gemini-4-argon' || m.tag === 'gemini-4-argon')) {
-        list = [DEFAULT_MODELS[0], ...list];
+      const museDefaults = DEFAULT_MODELS.filter((m) => m.id.startsWith('muse-'));
+      for (let i = museDefaults.length - 1; i >= 0; i--) {
+        const museDefault = museDefaults[i];
+        if (!list.some((m) => m.id === museDefault.id || m.tag === museDefault.tag)) {
+          list = [museDefault, ...list];
+        }
+      }
+      const argonDefault = DEFAULT_MODELS.find((m) => m.id === 'gemini-4-argon');
+      if (argonDefault && !list.some((m) => m.id === 'gemini-4-argon' || m.tag === 'gemini-4-argon')) {
+        list = [argonDefault, ...list];
       }
       return list.sort((a, b) => a.priority - b.priority);
     }
@@ -78,6 +87,7 @@ export default function SettingsPage() {
     updateSettings({
       githubPat: pat.trim(),
       customApiKey: apiKey.trim(),
+      museApiKey: museApiKey.trim(),
       maxAgenticRounds: maxRounds,
       routerEngine,
       models,
@@ -363,6 +373,19 @@ export default function SettingsPage() {
                   className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/[0.08] focus:border-indigo-500 text-xs font-mono text-slate-100 placeholder:text-slate-600 outline-none transition"
                 />
                 <p className="text-xs text-slate-500">Only required if using custom project quota.</p>
+              </div>
+
+              {/* Muse AI API Key */}
+              <div className="glass-panel p-6 rounded-2xl border border-white/[0.08] space-y-4">
+                <label className="text-sm font-bold text-white block">Muse AI API Key</label>
+                <input
+                  type="password"
+                  value={museApiKey}
+                  onChange={(e) => setMuseApiKey(e.target.value)}
+                  placeholder="muse_live_xxxxxxxxxxxxxxxx"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/[0.08] focus:border-indigo-500 text-xs font-mono text-slate-100 placeholder:text-slate-600 outline-none transition"
+                />
+                <p className="text-xs text-slate-500">Required for routing requests to Muse Spark models.</p>
               </div>
 
               {/* Exploration Rounds & Timeout */}

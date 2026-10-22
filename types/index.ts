@@ -71,6 +71,7 @@ export interface SourceFile {
 export interface ModelPricingTier {
   name: string;
   inputCostPerMillion: number;
+  cachedInputCostPerMillion?: number;
   outputCostPerMillion: number;
 }
 
@@ -184,6 +185,7 @@ export interface ModelConfig {
 export interface AppSettings {
   githubPat?: string;
   customApiKey?: string;
+  museApiKey?: string;
   preferredModel?: string;
   defaultMode?: IngestionMode;
   maxAgenticRounds?: number;
