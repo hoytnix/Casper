@@ -1,4 +1,5 @@
-import { SourceFile, RouterToolTrace, RoutingResult, RouterEngineType } from '@/types';
+import { SourceFile, RouterToolTrace, RoutingResult, RouterEngineType, DetectedFramework } from '@/types';
+import { detectRepositoryFramework } from './framework-detector';
 import { NextJsFileCard, buildNextJsRepoIndex, expandWithNextJsImportClosure } from './nextjs-indexer';
 import { buildNextJsCodeGraph, serializeCodeGraphForPrompt } from './nextjs-code-graph';
 import {
@@ -43,6 +44,16 @@ let mlcEngine: any = null;
 let mlcEngineLoading = false;
 let mlcEngineModelId = '';
 
+function frameworkRouterNote(framework: DetectedFramework): string {
+  if (framework === 'hono') {
+    return `Detected Framework: Hono edge-service backend (Cloudflare Workers / Bun / Node). Prioritize Hono routers (app.ts, src/index.ts, routes/), middleware (app.use), RPC bindings, and Zod validator middleware. get_route_map returns Hono endpoints alongside any Next.js routes.`;
+  }
+  if (framework === 'nextjs') {
+    return `Detected Framework: Next.js App Router. Prioritize app/**/page.tsx, layouts, route handlers, and Server Actions.`;
+  }
+  return `Detected Framework: unknown. Inspect both Next.js App Router conventions and Hono controller structures (routers, middleware, RPC) before selecting files.`;
+}
+
 export async function checkGeminiNanoAvailability(): Promise<'available' | 'readily' | 'downloadable' | 'unsupported'> {
   if (typeof window === 'undefined') return 'unsupported';
   const lm = window.LanguageModel || window.ai?.languageModel;
@@ -68,6 +79,8 @@ export async function warmUpLocalContextRouter(
   const repoIndex = buildNextJsRepoIndex(files);
   const codeGraph = buildNextJsCodeGraph(files);
   const graphSummary = serializeCodeGraphForPrompt(codeGraph);
+  const detectedFramework = detectRepositoryFramework(files);
+  const routerScopeNote = frameworkRouterNote(detectedFramework);
 
   let nanoReady = false;
   let arcticReady = false;
@@ -130,7 +143,9 @@ Output STRICT JSON on every turn adhering to schema:
 
 === CODE GRAPH SUMMARY ===
 ${graphSummary.slice(0, 3500)}
-=== END GRAPH ===`;
+=== END GRAPH ===
+
+${routerScopeNote}`;
 
           cachedBaseSession = await lm.create({
             initialPrompts: [{ role: 'system', content: systemPrompt }],
@@ -210,6 +225,8 @@ export async function routeNextJsContext(
   const repoIndex = buildNextJsRepoIndex(files);
   const codeGraph = buildNextJsCodeGraph(files);
   const graphSummary = serializeCodeGraphForPrompt(codeGraph);
+  const detectedFramework = detectRepositoryFramework(files);
+  const routerScopeNote = frameworkRouterNote(detectedFramework);
   const allPaths = files.map((f) => f.path);
   const toolTraces: RouterToolTrace[] = [];
 
@@ -248,7 +265,9 @@ Output STRICT JSON on every turn adhering to schema:
 
 === CODE GRAPH SUMMARY ===
 ${graphSummary.slice(0, 4000)}
-=== END GRAPH ===`;
+=== END GRAPH ===
+
+${routerScopeNote}`;
 
         const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
           { role: 'system', content: systemPrompt },
@@ -356,7 +375,7 @@ ${graphSummary.slice(0, 4000)}
               id: `trace-qwen-${Date.now()}-${step}`,
               tool: 'inspect_graph',
               args,
-              outputSummary: `Retrieved Next.js route map`,
+              outputSummary: `Retrieved route map (${detectedFramework})`,
               durationMs: toolDuration,
               timestamp: Date.now(),
             });
@@ -502,7 +521,7 @@ ${graphSummary.slice(0, 4000)}
               id: `trace-${Date.now()}-${step}`,
               tool: 'inspect_graph',
               args,
-              outputSummary: `Retrieved Next.js route map`,
+              outputSummary: `Retrieved route map (${detectedFramework})`,
               durationMs: toolDuration,
               timestamp: Date.now(),
             });
@@ -599,6 +618,14 @@ ${graphSummary.slice(0, 4000)}
           if ((q.includes('layout') || q.includes('root')) && p.includes('layout')) score += 0.3;
           if ((q.includes('page') || q.includes('home')) && p.includes('page')) score += 0.25;
           if (q.includes('hook') && p.includes('hook')) score += 0.3;
+          // Hono controller structures: routers, middleware, RPC & validators
+          const skeleton = (item.skeleton || '').toLowerCase();
+          const honoQuery =
+            q.includes('hono') || q.includes('endpoint') || q.includes('route') ||
+            q.includes('api') || q.includes('middleware') || q.includes('rpc') ||
+            q.includes('validator');
+          if (honoQuery && skeleton.includes('hono')) score += 0.35;
+          if (honoQuery && (p.includes('routes/') || p.includes('src/index') || p.endsWith('/app.ts') || p === 'src/app.ts' || p.includes('wrangler'))) score += 0.3;
 
           return { path: item.path, score };
         });
@@ -650,6 +677,9 @@ ${graphSummary.slice(0, 4000)}
     if (q.includes('api') && p.includes('route.ts')) score += 5;
     if (q.includes('layout') && p.includes('layout.tsx')) score += 5;
     if (q.includes('page') && p.includes('page.tsx')) score += 4;
+    // Hono controller structures: routers, middleware, RPC & validators
+    if ((q.includes('hono') || q.includes('endpoint') || q.includes('middleware') || q.includes('rpc') || q.includes('validator')) && (p.includes('routes/') || p.includes('middleware') || p.includes('src/index') || p.includes('app.ts') || p.includes('wrangler'))) score += 5;
+    if ((q.includes('api') || q.includes('route')) && (p.includes('routes/') || p.includes('src/index'))) score += 4;
     return { path, score };
   });
 

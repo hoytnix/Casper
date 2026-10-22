@@ -21,5 +21,13 @@
   - Removed capability text from the header.
   - Configured strict `h-screen flex flex-col overflow-hidden` layouts with inner `overflow-y-auto` scroll areas.
 
+- [x] **Next.js + Hono Dual-Framework Support**:
+  - `DetectedFramework` type (`nextjs` | `hono` | `unknown`) on `Repo` and `IngestionSnapshot` (`/types/index.ts`)
+  - Framework auto-detection engine (`/lib/framework-detector.ts`)
+  - Hono roles (`hono-route`, `hono-middleware`) in indexer and Hono method-chain mapping in code graph
+  - Hono-aware local context router (scope notes + scoring boosts) and dual-framework compile instructions (Hono Expert vs. Next.js Expert)
+  - Detected-framework badge in workspace sub-header with persistence
+  - Verified: `tsc --noEmit` clean, `eslint` clean on all touched files, `next build` green, 19/19 behavioral probe checks pass (`/tmp/fw-probe/run.mjs`)
+
 ## Current Status
-Production-Ready. Permalinks active, clean header, screen-height responsive layout with zero document scrollbars, automated prompt expense logging, and fully synchronized Memory Bank.
+Production-Ready. Dual-framework (Next.js + Hono) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, and fully synchronized Memory Bank.

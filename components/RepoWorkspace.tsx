@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   GitBranch,
   FolderTree,
@@ -25,6 +25,7 @@ import {
   SourceFile,
   ModelCostDetails,
   IngestionMode,
+  DetectedFramework,
 } from '@/types';
 import { ContextInspector } from './ContextInspector';
 import { ChatCompiler } from './ChatCompiler';
@@ -38,6 +39,7 @@ import {
   applyFileDelta,
 } from '@/lib/github';
 import { warmUpLocalContextRouter, routeNextJsContext } from '@/lib/local-context-router';
+import { detectRepositoryFramework, frameworkBadgeLabel } from '@/lib/framework-detector';
 import { formatCostUsd, calculateModelCost, resolveModelPricing, extractSuggestedRefactors } from '@/lib/utils';
 
 interface RepoWorkspaceProps {
@@ -76,6 +78,20 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
     step: 'idle',
     message: 'Ready',
   });
+
+  // Detected framework badge: persisted classification first, live detection fallback
+  const detectedFramework = useMemo(() => {
+    if (repo.detectedFramework) return repo.detectedFramework;
+    if (snapshot?.detectedFramework) return snapshot.detectedFramework;
+    if (snapshot?.files && snapshot.files.length > 0) {
+      const treePaths = (snapshot.treeListing || '')
+        .split('\n')
+        .map((l) => l.replace(/^@\[\//, '').replace(/\]$/, '').trim())
+        .filter((p) => p.length > 0);
+      return detectRepositoryFramework(snapshot.files, treePaths);
+    }
+    return 'unknown' as const;
+  }, [repo.detectedFramework, snapshot]);
 
   // Fetch branches on mount and pre-warm local AI context router
   useEffect(() => {
@@ -523,6 +539,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           let investigatedCount = 0;
           let investigatedFiles: SourceFile[] = [];
           let modelUsed = '';
+          let serverFramework: string | null = null;
           let fallbackPass = 1;
           let accumulatedThinking = '';
           let serverInputTokens = 3500;
@@ -571,6 +588,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                 } else if (evt.type === 'compiling_start') {
                   modelUsed = evt.model || modelUsed;
                   fallbackPass = evt.pass || fallbackPass;
+                  if (evt.detectedFramework) serverFramework = evt.detectedFramework;
                   if (evt.inputTokens) {
                     serverInputTokens = evt.inputTokens;
                   }
@@ -673,6 +691,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                 } else if (evt.type === 'done') {
                   modelUsed = evt.model || modelUsed;
                   fallbackPass = evt.pass || fallbackPass;
+                  if (evt.detectedFramework) serverFramework = evt.detectedFramework;
                   if (evt.inputTokens) serverInputTokens = evt.inputTokens;
                   const finalCleanText = evt.cleanContent || extractSuggestedRefactors(accumulatedContent).cleanPrompt;
                   accumulatedContent = finalCleanText;
@@ -729,11 +748,21 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               finalTokensCount
             );
 
+          // Persist framework classification (server-detected preferred, live fallback)
+          const snapshotFramework: DetectedFramework =
+            serverFramework === 'hono' || serverFramework === 'nextjs' || serverFramework === 'unknown'
+              ? serverFramework
+              : detectRepositoryFramework(
+                  activeFiles.length > 0 ? activeFiles : downloadedInvestigated,
+                  allBlobPaths
+                );
+
           // Save Snapshot with complete cost metrics and cached activeFiles
           const agentSnapshot: IngestionSnapshot = {
             owner: repo.owner,
             repo: repo.repo,
             branch: repo.branch,
+            detectedFramework: snapshotFramework,
             commitSha,
             totalTreeBlobs: allBlobPaths.length,
             includedFilesCount: activeFiles.length > 0 ? activeFiles.length : downloadedInvestigated.length,
@@ -753,7 +782,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           };
 
           saveSnapshot(repo.id, agentSnapshot);
-          onUpdateRepo(repo.id, { lastSyncedAt: Date.now() });
+          onUpdateRepo(repo.id, { lastSyncedAt: Date.now(), detectedFramework: snapshotFramework });
 
           const finalMessages: ChatMessage[] = messagesWithAssistantPlaceholder.map((m) =>
             m.id === assistantMsgId
@@ -936,6 +965,21 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
+
+          {/* Detected Framework Badge */}
+          {detectedFramework !== 'unknown' && (
+            <span
+              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-semibold ${
+                detectedFramework === 'hono'
+                  ? 'bg-orange-950/40 border-orange-500/25 text-orange-300'
+                  : 'bg-indigo-950/40 border-indigo-500/25 text-indigo-300'
+              }`}
+              title={`Detected framework: ${frameworkBadgeLabel(detectedFramework)}`}
+            >
+              <Layers className="w-3 h-3" />
+              {frameworkBadgeLabel(detectedFramework)}
+            </span>
+          )}
 
           <span className="text-slate-700" aria-hidden="true">|</span>
 

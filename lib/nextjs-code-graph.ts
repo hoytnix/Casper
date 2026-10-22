@@ -37,6 +37,12 @@ export function buildNextJsCodeGraph(files: SourceFile[]): NextJsCodeGraph {
     const isRouteHandler = file.path.includes('route.ts') || file.path.includes('route.js');
     const isPage = file.path.includes('page.tsx') || file.path.includes('page.jsx');
     const hasUseServer = file.content.includes("'use server'") || file.content.includes('"use server"');
+    const isHonoFile =
+      file.content.includes("from 'hono'") ||
+      file.content.includes('from "hono"') ||
+      file.content.includes('hono/zod-validator') ||
+      file.content.includes('hono/client') ||
+      file.content.includes('new Hono(');
 
     const routeMethods: string[] = [];
     const pageComponents: string[] = [];
@@ -72,9 +78,39 @@ export function buildNextJsCodeGraph(files: SourceFile[]): NextJsCodeGraph {
         routeMethods.push('DELETE');
       }
 
+      // Hono route handler chains: app.get('/path', ...), app.post(...),
+      // app.route('/base', subApp), app.use(middleware) — framework-agnostic
+      // endpoint cartography alongside Next.js App Router conventions.
+      let isHonoRouteSymbol = false;
+      if (isHonoFile || isRouteHandler) {
+        const honoRouteMatch = line.match(/\.((?:get|post|put|delete|patch|options|head|all|use|route))\s*\(\s*['"`]([^'"`]+)['"`]/i);
+        if (honoRouteMatch) {
+          const method = honoRouteMatch[1].toUpperCase();
+          const routePath = honoRouteMatch[2];
+          if (!routeMethods.includes(method)) {
+            routeMethods.push(method);
+          }
+          if (!detectedName) {
+            detectedName = `${method} ${routePath}`;
+            isExported = true;
+            isHonoRouteSymbol = true;
+          }
+        } else if (isHonoFile) {
+          const honoBareMatch = line.match(/\.((?:get|post|put|delete|patch|options|head|all))\s*\(/i);
+          if (honoBareMatch && !detectedName) {
+            const method = honoBareMatch[1].toUpperCase();
+            if (!routeMethods.includes(method)) {
+              routeMethods.push(method);
+            }
+          }
+        }
+      }
+
       if (detectedName) {
         let type: CodeSymbol['type'] = 'function';
-        if (isRouteHandler && ['GET', 'POST', 'PUT', 'DELETE'].includes(detectedName)) {
+        if (isHonoRouteSymbol) {
+          type = 'route-handler';
+        } else if (isRouteHandler && ['GET', 'POST', 'PUT', 'DELETE'].includes(detectedName)) {
           type = 'route-handler';
         } else if (hasUseServer || file.path.includes('action')) {
           type = 'server-action';
@@ -85,7 +121,10 @@ export function buildNextJsCodeGraph(files: SourceFile[]): NextJsCodeGraph {
           pageComponents.push(detectedName);
         }
 
-        const symbolKey = `${file.path}#${detectedName}`;
+        let symbolKey = `${file.path}#${detectedName}`;
+        if (symbols[symbolKey]) {
+          symbolKey = `${file.path}#${detectedName}:${lineNum}`;
+        }
         const symbol: CodeSymbol = {
           name: detectedName,
           type,
@@ -94,7 +133,12 @@ export function buildNextJsCodeGraph(files: SourceFile[]): NextJsCodeGraph {
           calls: [],
           renders: [],
           isExported,
-          httpMethod: type === 'route-handler' ? detectedName : undefined,
+          httpMethod:
+            type === 'route-handler'
+              ? isHonoRouteSymbol
+                ? detectedName.split(' ')[0]
+                : detectedName
+              : undefined,
         };
 
         symbols[symbolKey] = symbol;
@@ -133,9 +177,9 @@ export function buildNextJsCodeGraph(files: SourceFile[]): NextJsCodeGraph {
 
     fileToSymbols[file.path] = fileSymbols;
 
-    if (isRouteHandler && routeMethods.length > 0) {
+    if ((isRouteHandler || isHonoFile) && routeMethods.length > 0) {
       routeHandlersMap.set(file.path, {
-        methods: routeMethods,
+        methods: Array.from(new Set(routeMethods)),
         symbols: fileSymbols,
       });
     }
@@ -174,11 +218,11 @@ export function serializeCodeGraphForPrompt(graph: NextJsCodeGraph): string {
   const routeCount = graph.routeMap.routeHandlers.length;
   const pageCount = graph.routeMap.pages.length;
 
-  let summary = `=== NEXT.JS FUNCTION & COMPONENT CODE GRAPH ===\n`;
+  let summary = `=== FUNCTION & COMPONENT CODE GRAPH (Next.js + Hono) ===\n`;
   summary += `Total Symbols: ${symbolCount} | Route Handlers: ${routeCount} | Pages: ${pageCount} | Render Edges: ${renderCount}\n\n`;
 
   if (graph.routeMap.routeHandlers.length > 0) {
-    summary += `--- API ROUTE HANDLERS ---\n`;
+    summary += `--- API ROUTE HANDLERS (Next.js route.ts + Hono endpoints) ---\n`;
     for (const rh of graph.routeMap.routeHandlers) {
       summary += `  • @[/${rh.path}] [Methods: ${rh.methods.join(', ')}]\n`;
     }

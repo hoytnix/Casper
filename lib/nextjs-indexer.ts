@@ -8,6 +8,8 @@ export interface NextJsFileCard {
     | 'route-handler'
     | 'server-action'
     | 'middleware'
+    | 'hono-route'
+    | 'hono-middleware'
     | 'client-component'
     | 'server-component'
     | 'hook'
@@ -20,13 +22,47 @@ export interface NextJsFileCard {
   skeletonLine: string;
 }
 
+function isStrongHonoFile(path: string, content?: string): boolean {
+  const p = path.toLowerCase();
+  if (
+    p.includes('wrangler.toml') ||
+    p.includes('wrangler.json') ||
+    p.includes('src/routes/') ||
+    p.includes('/routes/')
+  ) {
+    return true;
+  }
+  if (!content) return false;
+  return (
+    content.includes("from 'hono'") ||
+    content.includes('from "hono"') ||
+    content.includes('hono/zod-validator') ||
+    content.includes('hono/client') ||
+    content.includes('new Hono(')
+  );
+}
+
+function hasHonoRouteCallShape(content?: string): boolean {
+  if (!content) return false;
+  return /\.\s*(get|post|put|delete|patch|options|head|all|use|route)\s*\(\s*['"`/]/.test(content);
+}
+
 export function classifyNextJsRole(path: string, content?: string): NextJsFileCard['role'] {
   const p = path.toLowerCase();
-  if (p.includes('middleware.ts') || p.includes('middleware.js')) return 'middleware';
+  const strongHono = isStrongHonoFile(path, content);
+  if (p.includes('middleware.ts') || p.includes('middleware.js')) {
+    if (strongHono || hasHonoRouteCallShape(content)) return 'hono-middleware';
+    return 'middleware';
+  }
+  if (strongHono && content && /\.\s*use\s*\(/.test(content)) return 'hono-middleware';
   if (p.includes('route.ts') || p.includes('route.js')) return 'route-handler';
+  if (strongHono) return 'hono-route';
   if (p.includes('layout.tsx') || p.includes('layout.jsx')) return 'app-layout';
   if (p.includes('page.tsx') || p.includes('page.jsx')) return 'app-page';
   if (p.includes('action') || (content && content.includes("'use server'"))) return 'server-action';
+  // Weak Hono signal (method-call shape without an explicit hono import):
+  // checked after Next.js structural roles so pages/layouts/actions keep priority.
+  if (hasHonoRouteCallShape(content)) return 'hono-route';
   if (p.includes('hook') || p.startsWith('hooks/')) return 'hook';
   if (p.includes('store') || p.includes('state')) return 'store';
   if (p.includes('type') || p.includes('interfaces')) return 'types';

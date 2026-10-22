@@ -36,6 +36,8 @@ export interface BtwAnswer {
   confidenceScore: number;
 }
 
+export type DetectedFramework = 'nextjs' | 'hono' | 'unknown';
+
 export interface Repo {
   id: string;
   owner: string;
@@ -48,6 +50,7 @@ export interface Repo {
   isPrivate: boolean;
   excludedPatterns?: string[];
   preferredMode?: IngestionMode;
+  detectedFramework?: DetectedFramework;
 }
 
 export interface GitTreeItem {
@@ -92,6 +95,7 @@ export interface IngestionSnapshot {
   timestamp: number;
   treeListing: string;
   files: SourceFile[];
+  detectedFramework?: DetectedFramework;
   mode?: IngestionMode;
   explorationTrail?: ExplorationStep[];
   toolTraces?: RouterToolTrace[];
@@ -222,6 +226,8 @@ export interface NextJsFileCard {
     | 'route-handler'
     | 'server-action'
     | 'middleware'
+    | 'hono-route'
+    | 'hono-middleware'
     | 'client-component'
     | 'server-component'
     | 'hook'

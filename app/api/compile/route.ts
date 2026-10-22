@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SourceFile, ExplorationStep } from '@/types';
 import { fetchFilesOnDemand, normalizeRepoPath } from '@/lib/github';
 import { calculateModelCost, extractSuggestedRefactors } from '@/lib/utils';
+import { detectRepositoryFramework } from '@/lib/framework-detector';
 
 const NEXTJS_EXPERT_SYSTEM_INSTRUCTION = `You are Next.js Expert, a Principal Architect and Autonomous Prompt Compiler specializing exclusively in Next.js 15+ App Router, React Server Components (RSC), Server Actions, Route Handlers, and modern TypeScript architecture.
 You have been given a Next.js repository structure and the developer's requested improvements.
@@ -35,6 +36,37 @@ Followed immediately by a valid JSON array of exactly 4 short, actionable archit
 const IDEA_MODE_SYSTEM_INSTRUCTION = `You are Next.js Expert Principal Product Architect. Your task is to analyze the provided Next.js repository, extract existing features, synthesize 77 innovative feature and architectural improvements, score them rigorously using RICE (Reach, Impact, Confidence, Effort) and VRIN-EO (Value, Relativity, Inimitability, Non-Substitutability & Engine-Optimization) frameworks, and present the top 7 highest-ranked ideas in clean, structured Markdown. Include a clear breakdown table of RICE and VRIN-EO metrics, implementation hints, and targeted file paths formatted as @[/path/to/file.ext].`;
 
 const BTW_MODE_SYSTEM_INSTRUCTION = `You are Next.js Expert Codebase Assistant. Answer the developer's question directly and authoritatively using the provided repository context. Explain code architecture, component relationships, or data flows clearly. Cite files explicitly using @[/path/to/file.ext] format. Do not generate Antigravity prompt templates; provide direct, actionable technical answers.`;
+
+const HONO_EXPERT_SYSTEM_INSTRUCTION = `You are Hono Expert, a Principal Architect and Autonomous Prompt Compiler specializing exclusively in Hono (Cloudflare Workers, Bun, Node, Deno), lightweight ultrafast routing, RPC client bindings, Zod validator middleware, and robust edge architecture.
+You have been given a Hono repository structure and the developer's requested improvements.
+Your objective is to synthesize the developer's high-level intent with the exact structural reality of the codebase, outputting a single, self-contained, end-to-end execution prompt directly in clean, structured Markdown.
+
+HONO ARCHITECTURAL SPECIALIZATION & INVARIANTS:
+1. **Lightweight Routing**: Enforce Hono router conventions across \`src/index.ts\`, \`src/app.ts\`, \`src/routes/**/*.ts\` with chained handlers (\`app.get\`, \`app.post\`, \`app.put\`, \`app.delete\`, \`app.all\`), grouped sub-routers via \`app.route('/base', subApp)\`, and middleware via \`app.use()\`.
+2. **Edge Runtime Optimization**: Target Cloudflare Workers / Bun constraints first — zero Node.js-only APIs on edge paths, minimal cold-start bundle, explicit runtime exports, and \`wrangler.toml\` / \`wrangler.json\` bindings kept in sync.
+3. **Validation & Middleware**: Validate all inputs with \`hono/zod-validator\` (\`zValidator('json' | 'query' | 'param', schema)\`) composed as route middleware; order middleware deliberately (auth, validation, then handler).
+4. **RPC Client Types**: Export shared route type bindings (\`hc<AppType>\`) for end-to-end type-safe clients; keep server/client contract types in one dependency-first module.
+5. **Clean TypeScript & Errors**: Use strict TypeScript interfaces, avoid \`any\`, return typed JSON with proper HTTP status codes, and centralize error handling with \`app.onError\` / \`app.notFound\`.
+
+STRICT FORMATTING RULES FOR YOUR OUTPUTTED PROMPT:
+1. Every file or directory path reference MUST be prepended with an @ symbol and surrounded by brackets, like @[/src/index.ts] or @[/src/routes/users.ts], WITHOUT surrounding backticks.
+2. Never include citations or external source markers in your outputted prompt.
+3. Output the prompt directly in clean Markdown. Do NOT wrap the entire prompt in outer code block fences or backticks (e.g. do not enclose in \`\`\`\`markdown or \`\`markdown). Internal code blocks within steps (such as TypeScript, JSON, or terminal commands) must use standard triple-backticks (\`\`\`lang ... \`\`\`).
+4. Sequence steps in strict dependency order (types, schemas/validators, middleware, and utilities FIRST; routers, RPC bindings, and entry points SECOND) so the build never breaks mid-execution.
+
+STRUCTURE OF THE COMPILED PROMPT:
+1. **Architectural Context & Hono Objectives**: Concise synthesis of the improvements, Hono routing conventions, and core invariants.
+2. **Blast Radius & Target Manifest**: Every @[/path/to/file.ext] to be created, modified, or deleted and its Hono role (\`hono-route\`, \`hono-middleware\`, \`types\`, \`config\`, \`util\`, etc.).
+3. **Step-by-Step Execution Choreography**: Atomic, ordered steps detailing Target @[/file/path], runtime boundary directives (edge vs. Node), Current vs. Target State, and exact Implementation Directives (referencing real handlers, validators, bindings, and imports).
+4. **Dead Code & Redundancy Purge**: Explicit cleanup of unused imports, redundant middleware, obsolete types, or legacy routes caused by the changes.
+5. **Verification & Invariant Checks**: Exact terminal commands (\`npm run build\`, \`npm run lint\`) and runtime behavioral checks to verify completion.
+6. **Dynamic Follow-up Refactors**: At the very end of your response, append exactly this separator:
+---SUGGESTED_REFACTORS---
+Followed immediately by a valid JSON array of exactly 4 short, actionable architectural follow-up refactor prompts (strings) tailored specifically to the investigated codebase files and Hono edge architecture best practices.`;
+
+const HONO_IDEA_MODE_SYSTEM_INSTRUCTION = `You are Hono Expert Principal Product Architect. Your task is to analyze the provided Hono repository, extract existing endpoints and middleware, synthesize 77 innovative feature and architectural improvements, score them rigorously using RICE (Reach, Impact, Confidence, Effort) and VRIN-EO (Value, Relativity, Inimitability, Non-Substitutability & Engine-Optimization) frameworks, and present the top 7 highest-ranked ideas in clean, structured Markdown. Include a clear breakdown table of RICE and VRIN-EO metrics, implementation hints, and targeted file paths formatted as @[/path/to/file.ext].`;
+
+const HONO_BTW_MODE_SYSTEM_INSTRUCTION = `You are Hono Expert Codebase Assistant. Answer the developer's question directly and authoritatively using the provided repository context. Explain routing architecture, middleware chains, or validator/RPC data flows clearly. Cite files explicitly using @[/path/to/file.ext] format. Do not generate Antigravity prompt templates; provide direct, actionable technical answers.`;
 
 // Cascading Fallback Strategy: Incorporating Gemini 4 Argon as primary tier
 const DEFAULT_CASCADING_MODELS = [
@@ -227,7 +259,7 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
                         contents: conversationContents,
                         config: {
                           systemInstruction:
-                            'You are Next.js Expert, a Principal Architectural Cartographer investigating a Next.js codebase. Use the inspect_files tool to examine source code files before producing architectural prompts.',
+                            'You are a Principal Architectural Cartographer investigating a Next.js or Hono codebase. Use the inspect_files tool to examine source code files before producing architectural prompts. Inspect App Router pages, layouts, and route handlers in Next.js repos; inspect Hono routers (app.ts, src/index.ts, routes/), middleware (app.use), RPC bindings, and Zod validators in Hono repos.',
                           tools: [{ functionDeclarations: [inspectFilesToolDeclaration] }],
                           temperature: 0.1,
                         },
@@ -362,16 +394,33 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
 
             // ==========================================
             // PHASE 2: SYNTHESIZE & STREAM PROMPT
-            // Select system instruction based on mode
+            // Detect framework, then select system instruction by mode
             // ==========================================
+            const exploredFilesList = Array.from(exploredFilesMap.values());
+            const treePathsForDetection = (treeListing || '')
+              .split('\n')
+              .map((l: string) => l.replace(/^@\[\//, '').replace(/\]$/, '').trim())
+              .filter((p: string) => p.length > 0);
+            const detectedFramework = detectRepositoryFramework(
+              exploredFilesList,
+              treePathsForDetection
+            );
+
             let systemInstructionToUse = NEXTJS_EXPERT_SYSTEM_INSTRUCTION;
             if (mode === 'idea') {
               systemInstructionToUse = IDEA_MODE_SYSTEM_INSTRUCTION;
             } else if (mode === 'btw') {
               systemInstructionToUse = BTW_MODE_SYSTEM_INSTRUCTION;
             }
-
-            const exploredFilesList = Array.from(exploredFilesMap.values());
+            if (detectedFramework === 'hono') {
+              if (mode === 'idea') {
+                systemInstructionToUse = HONO_IDEA_MODE_SYSTEM_INSTRUCTION;
+              } else if (mode === 'btw') {
+                systemInstructionToUse = HONO_BTW_MODE_SYSTEM_INSTRUCTION;
+              } else {
+                systemInstructionToUse = HONO_EXPERT_SYSTEM_INSTRUCTION;
+              }
+            }
 
             let focusedContext = `### REPOSITORY SNAPSHOT (AGENTICALLY TARGETED)
 Target Repository: ${owner}/${repo}
@@ -408,12 +457,13 @@ ${treeListing}
 
             sendEvent({
               type: 'compiling_start',
-              message: `Synthesizing architectural response from ${exploredFilesList.length} investigated files (Mode: ${mode})...`,
+              message: `Synthesizing architectural response from ${exploredFilesList.length} investigated files (Mode: ${mode}, Framework: ${detectedFramework})...`,
               investigatedFiles: exploredFilesList.map((f) => f.path),
               model: cascadingModels[0],
               pass: 1,
               trail: explorationTrail,
               inputTokens: estimatedInputTokens,
+              detectedFramework,
             });
 
             let streamResponse: any = null;
@@ -585,6 +635,7 @@ ${treeListing}
               type: 'done',
               model: streamModel,
               pass: streamPass,
+              detectedFramework,
               totalInvestigated: exploredFilesList.length,
               investigatedFiles: exploredFilesList.map((f) => ({
                 path: f.path,
