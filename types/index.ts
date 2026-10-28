@@ -142,6 +142,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  isMinimized?: boolean;
   thinkingContent?: string;
   costDetails?: ModelCostDetails;
   suggestedRefactors?: string[];

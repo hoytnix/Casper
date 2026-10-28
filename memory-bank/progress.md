@@ -34,6 +34,10 @@
   - `/components/Header.tsx` settings control is now a `<Link href="/settings">` (removed `onOpenSettings`, optional `onOpenAddModal`); `/components/SettingsModal.tsx` deleted; modal state/JSX purged from `/app/page.tsx` and `/app/chat/[owner]/[repo]/page.tsx`.
   - Verified: `eslint` clean on all touched files, `next build` green with `/settings` prerendered as static content.
 
+- [x] **Collapsible Chat Spoilers + Muse Spark Pricing Precedence**:
+  - `ChatMessage.isMinimized?` (`/types/index.ts`); minimize/maximize chevron + spoiled banner in `/components/ChatCompiler.tsx` with unused-import purge.
+  - Explicit contributor → standard → Gemini ordering in `resolveModelPricing` (`/lib/utils.ts`); existing `/lib/utils.test.ts` Muse assertions (10/10) confirm $0.10/$0.20 and $1.25/$4.25 tiers.
+  - Verified: 32/32 `node:test`, `tsc` clean, `eslint` clean, `pnpm build` green.
 - [x] **Full Rebrand to "Casper" (the friendly ghost who reads all ur code lol)**:
   - Root metadata + viewport title (`/app/layout.tsx`), PWA manifest (`/public/manifest.json`), `/metadata.json`, finance page title
   - Header + finance header branding (`/components/Header.tsx`, `/components/FinanceHeader.tsx`)

@@ -9,22 +9,17 @@ import {
   User,
   Bot,
   RotateCcw,
-  Terminal,
   Layers,
-  Clock,
   ChevronDown,
+  ChevronUp,
   Compass,
-  CheckCircle2,
   AlertTriangle,
-  Coins,
-  Receipt,
   GitBranch,
-  Cpu,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { ChatMessage, IngestionProgress, IngestionSnapshot, Repo } from '@/types';
 import { StepLoader } from './StepLoader';
-import { formatCompiledPrompt, extractSuggestedRefactors, formatCostUsd, calculateModelCost } from '@/lib/utils';
+import { formatCompiledPrompt, extractSuggestedRefactors } from '@/lib/utils';
 
 interface ChatCompilerProps {
   repo: Repo;
@@ -34,6 +29,7 @@ interface ChatCompilerProps {
   onClearChat: () => void;
   onDeleteMessage?: (id: string) => void;
   onRetryPrompt?: (promptText: string) => void;
+  onToggleMinimize?: (id: string) => void;
   snapshot: IngestionSnapshot | null;
 }
 
@@ -45,13 +41,28 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
   onClearChat,
   onDeleteMessage,
   onRetryPrompt,
+  onToggleMinimize,
   snapshot,
 }) => {
   const [inputText, setInputText] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedTrails, setExpandedTrails] = useState<Set<string>>(new Set());
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set());
+  const [minimizedMsgs, setMinimizedMsgs] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const toggleMinimize = (msgId: string) => {
+    setMinimizedMsgs((prev) => {
+      const next = new Set(prev);
+      if (next.has(msgId)) next.delete(msgId);
+      else next.add(msgId);
+      return next;
+    });
+    onToggleMinimize?.(msgId);
+  };
+
+  const isMsgMinimized = (msg: ChatMessage) =>
+    msg.isMinimized ? !minimizedMsgs.has(msg.id) : minimizedMsgs.has(msg.id);
 
   const toggleThinking = (msgId: string) => {
     setExpandedThinking((prev) => {
@@ -265,6 +276,14 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
 
+                  <button
+                    onClick={() => toggleMinimize(msg.id)}
+                    className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                    title={isMsgMinimized(msg) ? 'Expand message' : 'Minimize (spoil) message'}
+                  >
+                    {isMsgMinimized(msg) ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                  </button>
+
                   {msg.role === 'assistant' && !isHtmlCorrupted(msg.content) && (
                     <button
                       onClick={() => handleCopy(msg.id, formatCompiledPrompt(msg.content))}
@@ -375,7 +394,11 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                 )}
 
               {/* Message Content */}
-              {isHtmlCorrupted(msg.content) ? (
+              {isMsgMinimized(msg) ? (
+                <div className="text-xs font-mono text-slate-500 italic py-1">
+                  Message minimized (spoiled) &middot; Click expand to view content.
+                </div>
+              ) : isHtmlCorrupted(msg.content) ? (
                 <div className="space-y-3 p-4 rounded-xl bg-rose-950/20 border border-rose-500/30 text-rose-200 text-xs">
                   <p className="font-semibold text-rose-300">
                     The compiler received a temporary dev server initialization page instead of a streaming completion.

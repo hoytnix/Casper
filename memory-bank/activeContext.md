@@ -36,3 +36,8 @@ Implemented Next.js/Hono dual-mode repository cartography:
 - **Dual-Mode Compile (`/app/api/compile/route.ts`)**: Server detects framework per request and injects Hono Expert instructions (edge runtime, Zod validators, RPC bindings) for Hono repos; Next.js instructions otherwise. Classification streamed in `compiling_start` / `done` events.
 - **Workspace Badge (`/components/RepoWorkspace.tsx`)**: Sub-header shows Next.js App Router (indigo) vs. Hono Edge Router (orange) badge; classification persisted on `Repo` and `IngestionSnapshot`.
 - **Local Router Hono Support (`/lib/local-context-router.ts`)**: Framework-aware agent scope notes plus Hono scoring boosts (routes/, middleware, RPC, validators) in Arctic-Embed-XS and keyword fallback tiers.
+Implemented collapsible chat spoilers + explicit Muse Spark pricing precedence:
+- **Types (`/types/index.ts`)**: `ChatMessage.isMinimized?` for persisted minimize state.
+- **Chat (`/components/ChatCompiler.tsx`)**: local `minimizedMsgs` set + `toggleMinimize`/`isMsgMinimized` (persisted flag respected, toggle overrides), chevron button in header, spoiled banner body; removed unused `Terminal/Clock/CheckCircle2/Coins/Receipt/Cpu` + unused cost util imports, added `ChevronUp` and optional `onToggleMinimize`.
+- **Pricing (`/lib/utils.ts`)**: explicit `muse-spark-1.3-contributor` match first, then `muse-spark-1.3`/`muse-` before all Gemini fallbacks.
+- Verified: 32/32 `node:test` pass, `tsc --noEmit` clean, `eslint` clean on touched files, `pnpm build` green.

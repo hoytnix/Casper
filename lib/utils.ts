@@ -162,10 +162,11 @@ export const MODEL_PRICING_TIERS: Record<string, ModelPricingTier> = {
  */
 export function resolveModelPricing(modelName: string): ModelPricingTier {
   const norm = (modelName || '').toLowerCase().replace(/^(models\/)/, '').replace(/[\s_]+/g, '-');
-  if (norm.includes('contributor')) {
+  // Exact or prefix precedence for Muse Spark models before general Gemini checks
+  if (norm.includes('muse-spark-1.3-contributor') || norm.includes('contributor')) {
     return MODEL_PRICING_TIERS['muse-spark-1.3-contributor'];
   }
-  if (norm.includes('muse-spark-1.3') || norm.includes('muse-spark') || norm.startsWith('muse-') || norm === 'muse' || norm.includes('muse')) {
+  if (norm.includes('muse-spark-1.3') || norm.startsWith('muse-') || norm === 'muse' || norm.includes('muse')) {
     return MODEL_PRICING_TIERS['muse-spark-1.3'];
   }
   if (norm.includes('argon') || norm.includes('gemini-4') || norm.includes('gemini-4-argon')) {
