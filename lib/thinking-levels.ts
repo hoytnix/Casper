@@ -91,15 +91,17 @@ export function buildGeminiThinkingConfig(
 
 /**
  * Muse Spark generation-config fragment carrying the full five-level scale.
- * `reasoning_effort` matches the OpenAI-style chat-completions convention
- * while `thinkingConfig` preserves the explicit level + summaries pairing.
+ * Only `reasoning_effort` is sent: the Muse chat-completions endpoint rejects
+ * the Gemini-style `thinkingConfig` object with
+ * `400 unknown parameter 'thinkingConfig'`, which fails the whole cascade.
+ * `summaries` is intentionally unused — Muse has no summaries knob, so it is
+ * accepted for call-site symmetry and dropped.
  */
 export function buildMuseThinkingPayload(
   level: ThinkingLevel,
-  summaries: ThinkingSummaryMode
-): { reasoning_effort: MuseThinkingLevel; thinkingConfig: { thinkingLevel: MuseThinkingLevel; thinkingSummaries: ThinkingSummaryMode } } {
+  _summaries: ThinkingSummaryMode
+): { reasoning_effort: MuseThinkingLevel } {
   return {
     reasoning_effort: level,
-    thinkingConfig: { thinkingLevel: level, thinkingSummaries: summaries },
   };
 }

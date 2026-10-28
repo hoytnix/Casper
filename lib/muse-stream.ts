@@ -162,12 +162,16 @@ export function buildMuseRequestBody(input: MuseRequestInput): Record<string, un
     input.searchGrounding === true
       ? [{ type: 'web_search', search_context_size: input.searchContextSize ?? 'medium' }]
       : undefined;
+  // Defensive strip: the Muse endpoint 400s on Gemini-style `thinkingConfig`.
+  // Only `reasoning_effort` (plus future allowlisted keys) may travel.
+  const { thinkingConfig: _dropped, ...safeThinking } = input.thinkingPayload ?? {};
+  void _dropped;
   return {
     model: input.model,
     stream: true,
     temperature: input.temperature,
     max_tokens: MUSE_MAX_OUTPUT_TOKENS,
-    ...(input.thinkingPayload ?? {}),
+    ...safeThinking,
     ...(tools ? { tools } : {}),
     messages: [
       { role: 'system', content: input.systemInstruction },

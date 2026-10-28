@@ -121,3 +121,7 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Optional cached-tokens input with pricing-derived cached cost in `/components/AddTransactionModal.tsx`
   - Icon-only Context Inspector toggle at the far-left sub-header edge; right-aligned trigger removed (`/components/RepoWorkspace.tsx`)
   - Verified: 52/52 `node:test`, `tsc` clean, `eslint` clean (full `pnpm lint`), `pnpm build` green
+- [x] **Muse `thinkingConfig` 400 Fix + Nano Execution-Config Check**:
+  - `buildMuseThinkingPayload` sends only `reasoning_effort` (`/lib/thinking-levels.ts`); `buildMuseRequestBody` strips stale `thinkingConfig` (`/lib/muse-stream.ts`); Nano `availability({ outputLanguage: 'en' })` matches `create()` options (`/lib/local-context-router.ts`)
+  - Regression coverage in `/lib/thinking-levels.test.ts` + `/lib/muse-stream.test.ts`
+  - Verified: 62/62 `node:test`, `tsc` clean, `eslint` clean, `pnpm build` green

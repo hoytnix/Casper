@@ -182,3 +182,19 @@ test('endpoint builder appends the completions suffix to the operator base URL',
     'https://example.com/hatch/v1/chat/completions'
   );
 });
+
+test('request body never emits thinkingConfig (Muse 400 regression)', () => {
+  const body = buildMuseRequestBody({
+    model: 'muse-spark-1.3-contributor',
+    systemInstruction: 'sys',
+    prompt: 'user-goal',
+    temperature: 0.2,
+    // A stale caller passing the old Gemini-style fragment must not leak it.
+    thinkingPayload: {
+      reasoning_effort: 'max',
+      thinkingConfig: { thinkingLevel: 'max', thinkingSummaries: 'auto' },
+    },
+  });
+  assert.equal(body['reasoning_effort'], 'max');
+  assert.ok(!('thinkingConfig' in body), 'thinkingConfig triggers Muse 400');
+});

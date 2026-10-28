@@ -40,11 +40,10 @@ test('isMuseOnlyThinkingLevel flags only xhigh and max', () => {
   assert.equal(isMuseOnlyThinkingLevel('low'), false);
 });
 
-test('buildMuseThinkingPayload forwards the full level; Gemini payload maps it', () => {
+test('buildMuseThinkingPayload forwards only reasoning_effort (no thinkingConfig)', () => {
   const muse = buildMuseThinkingPayload('max', 'auto');
   assert.equal(muse.reasoning_effort, 'max');
-  assert.equal(muse.thinkingConfig.thinkingLevel, 'max');
-  assert.equal(muse.thinkingConfig.thinkingSummaries, 'auto');
+  assert.ok(!('thinkingConfig' in muse), 'Muse endpoint rejects thinkingConfig with 400');
 
   const gemini = buildGeminiThinkingConfig('max', 'enabled');
   assert.equal(gemini.thinkingLevel, 'high');

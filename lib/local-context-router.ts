@@ -18,7 +18,7 @@ import { CreateMLCEngine } from '@mlc-ai/web-llm';
 declare global {
   interface Window {
     LanguageModel?: {
-      availability: () => Promise<'available' | 'readily' | 'no' | 'after-download'>;
+      availability: (options?: { outputLanguage?: string }) => Promise<'available' | 'readily' | 'no' | 'after-download' | 'unavailable'>;
       create: (options?: {
         initialPrompts?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
         outputLanguage?: string;
@@ -27,7 +27,7 @@ declare global {
     };
     ai?: {
       languageModel?: {
-        availability: () => Promise<string>;
+        availability: (options?: any) => Promise<string>;
         create: (options?: any) => Promise<any>;
       };
     };
@@ -64,7 +64,11 @@ export async function checkGeminiNanoAvailability(): Promise<'available' | 'read
   if (!lm || typeof lm.availability !== 'function') return 'unsupported';
 
   try {
-    const status = await lm.availability();
+    // Pass the exact create() options so Chrome checks the real execution
+    // config. A bare availability() can report 'available' while
+    // create({ outputLanguage: 'en', ... }) has no execution config, which
+    // surfaces as "model was available but there was not an execution config".
+    const status = await lm.availability({ outputLanguage: 'en' });
     if (status === 'available' || status === 'readily') return 'available';
     if (status === 'after-download' || status === 'downloadable') return 'downloadable';
     return 'unsupported';
