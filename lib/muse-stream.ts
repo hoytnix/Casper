@@ -6,6 +6,7 @@
  * This module has no value imports by design (type-only `@/` imports are
  * erased before runtime, relative value imports would break the node runner).
  */
+import type { SearchContextSize } from '@/types';
 
 /**
  * Explicit output cap for Muse chat completions. Long-form compiled prompts
@@ -140,6 +141,8 @@ export interface MuseRequestInput {
   historyMessages?: { role: string; content: string }[];
   temperature: number;
   thinkingPayload?: Record<string, unknown>;
+  searchGrounding?: boolean;
+  searchContextSize?: SearchContextSize;
 }
 
 /**
@@ -153,12 +156,19 @@ export function buildMuseEndpoint(baseUrl: string): string {
 
 /** Builds the JSON body POSTed to the Muse chat-completions endpoint. */
 export function buildMuseRequestBody(input: MuseRequestInput): Record<string, unknown> {
+  // Web-search grounding is opt-in only: the tool key is omitted entirely
+  // when disabled so ungrounded requests stay byte-identical to before.
+  const tools =
+    input.searchGrounding === true
+      ? [{ type: 'web_search', search_context_size: input.searchContextSize ?? 'medium' }]
+      : undefined;
   return {
     model: input.model,
     stream: true,
     temperature: input.temperature,
     max_tokens: MUSE_MAX_OUTPUT_TOKENS,
     ...(input.thinkingPayload ?? {}),
+    ...(tools ? { tools } : {}),
     messages: [
       { role: 'system', content: input.systemInstruction },
       ...(Array.isArray(input.historyMessages) ? input.historyMessages : []),

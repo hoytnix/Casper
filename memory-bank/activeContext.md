@@ -1,6 +1,14 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Added opt-in Search Grounding across settings, builders, route, and UI:
+- **Types (`/types/index.ts`)**: `SearchContextSize = 'low' | 'medium' | 'high'`; optional `searchGrounding` / `searchContextSize` on `AppSettings` (optional per repo convention — the brief's required-field sketch was not adopted).
+- **Normalizer (`/lib/search-grounding.ts`, new)**: pure `isSearchContextSize` / `normalizeSearchContextSize` / `SEARCH_CONTEXT_SIZES`; 3 `node:test` cases in `/lib/search-grounding.test.ts` (red-first on missing module).
+- **Muse builder (`/lib/muse-stream.ts`)**: `buildMuseRequestBody` appends `web_search` (`search_context_size`, default `medium`) only when grounding is `true`; `tools` key omitted otherwise so ungrounded bodies stay byte-identical; `stream`/`max_tokens`/thinking spread preserved (1 new test, incl. truncation-fix regression guard).
+- **Route (`/app/api/compile/route.ts`)**: destructures + normalizes flags (explicit `true` only); forwards to `streamMuseCompletionChunks` → Muse body; Gemini `config.tools = [{ googleSearch: {} }]` when enabled. No zod layer exists for the compile body — normalizers are the validation.
+- **Store + client (`/hooks/useRepoStore.ts`, `/components/RepoWorkspace.tsx`)**: defaults `false`/`'medium'` with legacy-settings backfill + coercion; compile POST forwards both flags (without this the route flags would be dead).
+- **Settings (`/app/settings/page.tsx`)**: Search Grounding toggle card + context-size dropdown at the end of Column 3, persisted via `handleSave`.
+- Verified: 61/61 `node:test` pass (4 new), `tsc --noEmit` clean, `eslint` clean on all touched files, `pnpm build` green. No legacy search/RAG stubs existed to purge (only `storage` false-positive matches).
 Traced the Muse 404 to a wrong operator base URL and made the endpoint self-evident:
 - **Root cause (production log)**: `muse-spark-1.3-contributor failed in Pass 1: Muse API error (404) ... Path '/hatch/v1/chat/completions' was not found`. No `/hatch/` string exists in repo code — the `/hatch/v1` prefix comes from the operator-set `MUSE_API_BASE_URL` in Vercel env (code appends only `/chat/completions`). The host is alive (answered the JSON 404), so DNS/TLS/auth transport works; only the configured path is wrong. Fix is operator-side: correct `MUSE_API_BASE_URL` to the documented Muse base (bare host + real prefix).
 - **Hardening (`/lib/muse-stream.ts`, `/app/api/compile/route.ts`)**: new pure `buildMuseEndpoint` (verbatim base path, trailing-slash strip) used by the fetch; non-OK errors now read `Muse API error (<status>) at <endpoint>: <body>` (key stays in headers, never in URL). 1 new `node:test` case appended to `/lib/muse-stream.test.ts` (red-first on missing export).

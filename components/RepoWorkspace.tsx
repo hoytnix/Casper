@@ -42,6 +42,7 @@ import { warmUpLocalContextRouter, routeNextJsContext } from '@/lib/local-contex
 import { detectRepositoryFramework, frameworkBadgeLabel } from '@/lib/framework-detector';
 import { formatCostUsd, calculateModelCost, resolveModelPricing, extractSuggestedRefactors } from '@/lib/utils';
 import { normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
+import { normalizeSearchContextSize } from '@/lib/search-grounding';
 
 interface RepoWorkspaceProps {
   repo: Repo;
@@ -518,6 +519,8 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             githubPat: settings.githubPat,
             thinkingLevel: requestThinkingLevel,
             thinkingSummaries: requestThinkingSummaries,
+            searchGrounding: settings.searchGrounding === true,
+            searchContextSize: normalizeSearchContextSize(settings.searchContextSize),
             routerEngine: routerEngineUsed,
             models: settings.models,
             maxRounds: settings.maxAgenticRounds || 3,

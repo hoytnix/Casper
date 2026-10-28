@@ -101,6 +101,11 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Open item: default `MUSE_API_BASE_URL` (`https://api.muse.ai/v1`) is unconfirmed — override via env if Muse publishes a different chat-completions host
 
 ## Completed Modules (cont.)
+- [x] **Opt-In Search Grounding (Muse `web_search` + Gemini `googleSearch`)**:
+  - `SearchContextSize` + optional flags on `AppSettings` (`/types/index.ts`); pure normalizer + 3 tests (`/lib/search-grounding.ts`)
+  - Conditional `web_search` tool in `buildMuseRequestBody` with byte-identical-off guarantee + regression guard (`/lib/muse-stream.ts`, 1 new test)
+  - Flag forwarding to Muse + Gemini payloads (`/app/api/compile/route.ts`); store defaults/backfill (`/hooks/useRepoStore.ts`); compile POST wiring (`/components/RepoWorkspace.tsx`); toggle card + size dropdown (`/app/settings/page.tsx`)
+  - Verified: 61/61 `node:test`, `tsc` clean, `eslint` clean, `pnpm build` green
 - [x] **Muse 404 Root-Caused to Env Base URL + Endpoint Echo**:
   - Production 404 path `/hatch/v1/chat/completions` traced to operator `MUSE_API_BASE_URL` (no `/hatch/` in repo code; host alive, path wrong)
   - `buildMuseEndpoint` helper + endpoint in Muse errors (`/lib/muse-stream.ts`, `/app/api/compile/route.ts`, 1 new test); pending: operator corrects env value, commits get pushed/deployed

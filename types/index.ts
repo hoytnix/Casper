@@ -191,6 +191,8 @@ export interface AppSettings {
   githubPat?: string;
   customApiKey?: string;
   museApiKey?: string;
+  searchGrounding?: boolean;
+  searchContextSize?: SearchContextSize;
   thinkingLevel?: ThinkingLevel;
   thinkingSummaries?: ThinkingSummaryMode;
   preferredModel?: string;
@@ -286,6 +288,7 @@ export type MuseThinkingLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type GeminiThinkingLevel = 'low' | 'medium' | 'high';
 export type ThinkingLevel = MuseThinkingLevel;
 export type ThinkingSummaryMode = 'auto' | 'enabled' | 'disabled';
+export type SearchContextSize = 'low' | 'medium' | 'high';
 
 export interface ThinkingConfig {
   thinkingLevel: ThinkingLevel;

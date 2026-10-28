@@ -16,12 +16,14 @@ import {
   RotateCcw,
   Clock,
   Save,
+  Globe,
 } from 'lucide-react';
 import { useRepoStore, DEFAULT_MODELS } from '@/hooks/useRepoStore';
 import { checkGeminiNanoAvailability, warmUpLocalContextRouter } from '@/lib/local-context-router';
 import { Header } from '@/components/Header';
-import { RouterEngineType, ModelConfig, ThinkingLevel, ThinkingSummaryMode } from '@/types';
+import { RouterEngineType, ModelConfig, ThinkingLevel, ThinkingSummaryMode, SearchContextSize } from '@/types';
 import { MUSE_THINKING_LEVELS, normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
+import { normalizeSearchContextSize, SEARCH_CONTEXT_SIZES } from '@/lib/search-grounding';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -38,6 +40,10 @@ export default function SettingsPage() {
   );
   const [thinkingSummaries, setThinkingSummaries] = useState<ThinkingSummaryMode>(
     normalizeThinkingSummaries(settings.thinkingSummaries)
+  );
+  const [searchGrounding, setSearchGrounding] = useState(settings.searchGrounding === true);
+  const [searchContextSize, setSearchContextSize] = useState<SearchContextSize>(
+    normalizeSearchContextSize(settings.searchContextSize)
   );
   const [nanoStatus, setNanoStatus] = useState<string>('checking...');
   const [isWarmingUp, setIsWarmingUp] = useState(false);
@@ -97,6 +103,8 @@ export default function SettingsPage() {
       museApiKey: museApiKey.trim(),
       thinkingLevel,
       thinkingSummaries,
+      searchGrounding,
+      searchContextSize,
       maxAgenticRounds: maxRounds,
       routerEngine,
       models,
@@ -467,6 +475,45 @@ export default function SettingsPage() {
                     onChange={(e) => setRequestTimeout(parseInt(e.target.value, 10))}
                     className="w-full accent-sky-500 cursor-pointer"
                   />
+                </div>
+              </div>
+
+              {/* Search Grounding */}
+              <div className="glass-panel p-6 rounded-2xl border border-white/[0.08] space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm font-bold text-white flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-emerald-400" />
+                    Search Grounding
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setSearchGrounding(!searchGrounding)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium font-mono border transition ${
+                      searchGrounding
+                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                        : 'bg-slate-800 border-slate-700 text-slate-500'
+                    }`}
+                  >
+                    {searchGrounding ? 'ENABLED' : 'OFF'}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Real-time web lookups via the provider&apos;s search tool with cited sources. Applies to Muse Spark (`web_search`) and Gemini (`googleSearch`) compilations.
+                </p>
+                <div className="space-y-2">
+                  <label className="text-xs text-slate-300 block">Search Context Size</label>
+                  <select
+                    value={searchContextSize}
+                    onChange={(e) => setSearchContextSize(normalizeSearchContextSize(e.target.value))}
+                    disabled={!searchGrounding}
+                    className="w-full bg-slate-900 border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-200 outline-none focus:border-emerald-500 disabled:opacity-40"
+                  >
+                    {SEARCH_CONTEXT_SIZES.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useSyncExternalStore } from 'react';
 import { Repo, AppSettings, ChatMessage, IngestionSnapshot, ModelConfig } from '@/types';
 import { normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
+import { normalizeSearchContextSize } from '@/lib/search-grounding';
 import { formatCompiledPrompt, extractSuggestedRefactors } from '@/lib/utils';
 import {
   saveSnapshotToDB,
@@ -134,6 +135,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   githubPat: '',
   customApiKey: '',
   museApiKey: '',
+  searchGrounding: false,
+  searchContextSize: 'medium',
   thinkingLevel: 'high',
   thinkingSummaries: 'auto',
   preferredModel: 'gemini-4-argon',
@@ -206,6 +209,13 @@ export function useRepoStore() {
         return {
           ...DEFAULT_SETTINGS,
           ...parsed,
+          // Grounding is opt-in: only an explicit true survives reloads,
+          // and the size is coerced to the low/medium/high union.
+          searchGrounding: parsed.searchGrounding === true,
+          searchContextSize: normalizeSearchContextSize(
+            parsed.searchContextSize,
+            DEFAULT_SETTINGS.searchContextSize ?? 'medium'
+          ),
           // Accept the full five-level scale (xhigh/max included) —
           // normalize rather than clamp so Muse-only tiers survive reloads.
           thinkingLevel: normalizeThinkingLevel(parsed.thinkingLevel, DEFAULT_SETTINGS.thinkingLevel ?? 'high'),

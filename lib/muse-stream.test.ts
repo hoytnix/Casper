@@ -134,6 +134,38 @@ test('request body pins an explicit output cap so completions are never single-t
   );
 });
 
+test('request body attaches web_search tool only when grounding is enabled', () => {
+  const grounded = buildMuseRequestBody({
+    model: 'muse-spark-1.3',
+    systemInstruction: 'sys',
+    prompt: 'user-goal',
+    temperature: 0.2,
+    searchGrounding: true,
+    searchContextSize: 'high',
+  });
+  assert.deepEqual(grounded['tools'], [{ type: 'web_search', search_context_size: 'high' }]);
+  // Truncation-fix fields survive grounding.
+  assert.equal(grounded['stream'], true);
+  assert.equal(grounded['max_tokens'], MUSE_MAX_OUTPUT_TOKENS);
+
+  const defaultSize = buildMuseRequestBody({
+    model: 'muse-spark-1.3',
+    systemInstruction: 'sys',
+    prompt: 'user-goal',
+    temperature: 0.2,
+    searchGrounding: true,
+  });
+  assert.deepEqual(defaultSize['tools'], [{ type: 'web_search', search_context_size: 'medium' }]);
+
+  const ungrounded = buildMuseRequestBody({
+    model: 'muse-spark-1.3',
+    systemInstruction: 'sys',
+    prompt: 'user-goal',
+    temperature: 0.2,
+  });
+  assert.ok(!('tools' in ungrounded));
+});
+
 test('endpoint builder appends the completions suffix to the operator base URL', () => {
   assert.equal(
     buildMuseEndpoint('https://api.muse.ai/v1'),

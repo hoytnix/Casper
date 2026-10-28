@@ -1,6 +1,7 @@
 import { FunctionDeclaration, GoogleGenAI, Type } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
-import { SourceFile, ExplorationStep } from '@/types';
+import { SourceFile, ExplorationStep, SearchContextSize } from '@/types';
+import { normalizeSearchContextSize } from '@/lib/search-grounding';
 import { fetchFilesOnDemand, normalizeRepoPath } from '@/lib/github';
 import { calculateModelCost, extractSuggestedRefactors } from '@/lib/utils';
 import { detectRepositoryFramework } from '@/lib/framework-detector';
@@ -171,6 +172,8 @@ async function* streamMuseCompletionChunks(args: {
   timeoutMs: number;
   thinkingLevel?: string;
   thinkingSummaries?: string;
+  searchGrounding?: boolean;
+  searchContextSize?: SearchContextSize;
 }): AsyncGenerator<{ candidates: { content: { parts: { text: string }[] } }[] }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), args.timeoutMs);
@@ -195,6 +198,8 @@ async function* streamMuseCompletionChunks(args: {
           prompt: args.prompt,
           historyMessages: args.historyMessages,
           temperature: args.temperature,
+          searchGrounding: args.searchGrounding,
+          searchContextSize: args.searchContextSize,
           // Muse Spark carries the full five-level scale (xhigh/max included).
           thinkingPayload: buildMuseThinkingPayload(
             normalizeThinkingLevel(args.thinkingLevel),
@@ -286,11 +291,18 @@ export async function POST(req: NextRequest) {
       conversationHistory: rawConversationHistory, // Prior ChatMessage turns for multi-turn caching
       models: customModels,
       requestTimeout = 60,
+      searchGrounding: rawSearchGrounding,
+      searchContextSize: rawSearchContextSize,
     } = body;
 
     const maxRounds = Math.min(Math.max(1, Number(rawMaxRounds) || 3), 4);
 
     const timeoutMs = Math.max(15000, Number(requestTimeout) * 1000);
+
+    // Search Grounding is strictly opt-in: only an explicit `true` enables
+    // web lookups, and the size is coerced to the low/medium/high union.
+    const useSearchGrounding = rawSearchGrounding === true;
+    const useSearchContextSize = normalizeSearchContextSize(rawSearchContextSize);
 
     const rawCustomModels = customModels || body.customModels;
     const modelsToUse: string[] =
@@ -693,6 +705,8 @@ ${treeListing}
                       timeoutMs,
                       thinkingLevel,
                       thinkingSummaries,
+                      searchGrounding: useSearchGrounding,
+                      searchContextSize: useSearchContextSize,
                     })[Symbol.asyncIterator]();
                     const firstResult = await withTimeout(
                       museIterator.next(),
@@ -725,6 +739,11 @@ ${treeListing}
                       // Gemini accepts only low/medium/high — Muse-only
                       // xhigh/max arrive here already mapped to high.
                       config.thinkingConfig = geminiThinkingConfig;
+                    }
+                    if (useSearchGrounding) {
+                      // Google Search grounding: real-time web lookups with
+                      // url_citation annotations, no custom RAG index needed.
+                      config.tools = [{ googleSearch: {} }];
                     }
 
                     // Fresh stateful chat session per attempt: the normalized
