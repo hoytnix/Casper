@@ -321,7 +321,8 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                           Agent Reasoning &amp; Thinking Trail
                         </span>
                         <span className="text-[11px] font-mono text-purple-300">
-                          &middot; thinkingLevel: high
+                          &middot; thinkingLevel:{' '}
+                          {msg.thinkingLevel || msg.snapshotMeta?.thinkingLevel || 'high'}
                         </span>
                       </div>
                       <div className="flex items-center gap-1 text-purple-300">

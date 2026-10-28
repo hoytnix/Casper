@@ -20,7 +20,8 @@ import {
 import { useRepoStore, DEFAULT_MODELS } from '@/hooks/useRepoStore';
 import { checkGeminiNanoAvailability, warmUpLocalContextRouter } from '@/lib/local-context-router';
 import { Header } from '@/components/Header';
-import { RouterEngineType, ModelConfig } from '@/types';
+import { RouterEngineType, ModelConfig, ThinkingLevel, ThinkingSummaryMode } from '@/types';
+import { MUSE_THINKING_LEVELS, normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -32,6 +33,12 @@ export default function SettingsPage() {
   const [maxRounds, setMaxRounds] = useState<number>(settings.maxAgenticRounds || 3);
   const [requestTimeout, setRequestTimeout] = useState<number>(settings.requestTimeout || 60);
   const [routerEngine, setRouterEngine] = useState<RouterEngineType>(settings.routerEngine || 'auto');
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(
+    normalizeThinkingLevel(settings.thinkingLevel)
+  );
+  const [thinkingSummaries, setThinkingSummaries] = useState<ThinkingSummaryMode>(
+    normalizeThinkingSummaries(settings.thinkingSummaries)
+  );
   const [nanoStatus, setNanoStatus] = useState<string>('checking...');
   const [isWarmingUp, setIsWarmingUp] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
@@ -88,6 +95,8 @@ export default function SettingsPage() {
       githubPat: pat.trim(),
       customApiKey: apiKey.trim(),
       museApiKey: museApiKey.trim(),
+      thinkingLevel,
+      thinkingSummaries,
       maxAgenticRounds: maxRounds,
       routerEngine,
       models,
@@ -386,6 +395,42 @@ export default function SettingsPage() {
                   className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/[0.08] focus:border-indigo-500 text-xs font-mono text-slate-100 placeholder:text-slate-600 outline-none transition"
                 />
                 <p className="text-xs text-slate-500">Required for routing requests to Muse Spark models.</p>
+              </div>
+
+              {/* Thinking Effort Configuration */}
+              <div className="glass-panel p-6 rounded-2xl border border-white/[0.08] space-y-4">
+                <label className="text-sm font-bold text-white block">Thinking Effort</label>
+                <div className="space-y-2">
+                  <label className="text-xs text-slate-300 block">Reasoning Level</label>
+                  <select
+                    value={thinkingLevel}
+                    onChange={(e) => setThinkingLevel(normalizeThinkingLevel(e.target.value))}
+                    className="w-full bg-slate-900 border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-200 outline-none focus:border-indigo-500"
+                  >
+                    {MUSE_THINKING_LEVELS.map((level) => (
+                      <option key={level} value={level}>
+                        {level === 'xhigh' || level === 'max'
+                          ? `${level} (Muse-only)`
+                          : level}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs text-slate-300 block">Thinking Summaries</label>
+                  <select
+                    value={thinkingSummaries}
+                    onChange={(e) => setThinkingSummaries(normalizeThinkingSummaries(e.target.value))}
+                    className="w-full bg-slate-900 border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-200 outline-none focus:border-indigo-500"
+                  >
+                    <option value="auto">auto</option>
+                    <option value="enabled">enabled</option>
+                    <option value="disabled">disabled</option>
+                  </select>
+                </div>
+                <p className="text-xs text-slate-500">
+                  xhigh and max apply to Muse Spark models; Gemini requests map them to high.
+                </p>
               </div>
 
               {/* Exploration Rounds & Timeout */}

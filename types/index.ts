@@ -146,6 +146,7 @@ export interface ChatMessage {
   timestamp: number;
   isMinimized?: boolean;
   thinkingContent?: string;
+  thinkingLevel?: ThinkingLevel;
   costDetails?: ModelCostDetails;
   suggestedRefactors?: string[];
   snapshotMeta?: {
@@ -163,6 +164,7 @@ export interface ChatMessage {
     routerLatencyMs?: number;
     toolTraces?: RouterToolTrace[];
     thinkingContent?: string;
+    thinkingLevel?: ThinkingLevel;
     costDetails?: ModelCostDetails;
     inputTokens?: number;
     outputTokens?: number;
@@ -189,6 +191,8 @@ export interface AppSettings {
   githubPat?: string;
   customApiKey?: string;
   museApiKey?: string;
+  thinkingLevel?: ThinkingLevel;
+  thinkingSummaries?: ThinkingSummaryMode;
   preferredModel?: string;
   defaultMode?: IngestionMode;
   maxAgenticRounds?: number;
@@ -216,6 +220,7 @@ export interface IngestionProgress {
   explorationTrail?: ExplorationStep[];
   toolTraces?: RouterToolTrace[];
   thinkingContent?: string;
+  thinkingLevel?: ThinkingLevel;
   thinkingLogs?: string[];
   costDetails?: ModelCostDetails;
   inputTokens?: number;
@@ -277,9 +282,14 @@ export type RouterEngineType =
   | 'qwen-0.5b-coder-mlc' 
   | 'qwen-1.5b-coder-mlc';
 
+export type MuseThinkingLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type GeminiThinkingLevel = 'low' | 'medium' | 'high';
+export type ThinkingLevel = MuseThinkingLevel;
+export type ThinkingSummaryMode = 'auto' | 'enabled' | 'disabled';
+
 export interface ThinkingConfig {
-  thinkingLevel: 'low' | 'medium' | 'high';
-  thinkingSummaries: 'auto' | 'enabled' | 'disabled';
+  thinkingLevel: ThinkingLevel;
+  thinkingSummaries: ThinkingSummaryMode;
 }
 
 export type SSEEventType = 

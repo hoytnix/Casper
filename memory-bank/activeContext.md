@@ -1,6 +1,15 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Implemented Muse-exclusive Thinking Effort Configuration (`xhigh`, `max` Muse-only; Gemini stays `low`/`medium`/`high`):
+- **Types (`/types/index.ts`)**: `MuseThinkingLevel` (5 tiers), `GeminiThinkingLevel` (3 tiers), `ThinkingConfig` extended to all five; `thinkingLevel`/`thinkingSummaries` on `AppSettings`, `thinkingLevel` on `IngestionProgress`, `ChatMessage`, and `snapshotMeta`.
+- **Helpers (`/lib/thinking-levels.ts`, new)**: `normalizeThinkingLevel`/`normalizeThinkingSummaries` (accept `xhigh`/`max`, invalid → `high`/`auto`), `resolveGeminiThinkingLevel` (`xhigh`/`max` → `high`), `buildMuseThinkingPayload` (`reasoning_effort` + `thinkingConfig`) / `buildGeminiThinkingConfig`. 6 `node:test` cases in `/lib/thinking-levels.test.ts`.
+- **Compile route (`/app/api/compile/route.ts`)**: normalized `body.thinkingLevel`/`body.thinkingSummaries`; Muse SSE path forwards the full level via `reasoning_effort` + `thinkingConfig`; Gemini path uses the mapped config; `thinking_start` event carries `thinkingLevel`.
+- **Store (`/hooks/useRepoStore.ts`)**: `DEFAULT_SETTINGS` gains `thinkingLevel: 'high'` / `thinkingSummaries: 'auto'`; stored settings validated through normalizers so `xhigh`/`max` survive reloads.
+- **Settings UI (`/app/settings/page.tsx`)**: Thinking Effort panel (5-level reasoning select with Muse-only labels + summaries select) persisted via `updateSettings`.
+- **Client (`/components/RepoWorkspace.tsx`)**: forwards settings levels on every compile POST; captures server `thinkingLevel` into progress + assistant messages/snapshotMeta.
+- **Indicators (`/components/StepLoader.tsx`, `/components/ChatCompiler.tsx`)**: dynamic `thinkingLevel` labels (Muse-only badge in StepLoader) replacing hardcoded `high`.
+- Verified: 42/42 `node:test` pass (6 new), `tsc --noEmit` clean, `eslint` clean on all touched files, `pnpm build` green.
 Implemented stateful multi-turn compilation with conversation-history context caching:
 - **Normalizer (`/lib/chat-history.ts`, new)**: `normalizeConversationHistory` bounds raw client turns (last 10, 6k chars/turn, 24k total, newest survives), maps assistant→model, merges same-role runs, drops leading orphans/empties; `toGenAiHistory` / `toMuseMessages` provider mappers. 7 `node:test` cases in `/lib/chat-history.test.ts`.
 - **Compile route (`/app/api/compile/route.ts`)**: accepts `conversationHistory`; synthesis uses a fresh `ai.chats.create({model, history})` + `sendMessageStream({message, config})` per cascade attempt (fresh Chat per retry so failures never pollute state); Muse path prepends normalized history to its messages array; token estimate and `compiling_start` include history size. Empty history is byte-identical to the old stateless path.

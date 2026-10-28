@@ -51,7 +51,16 @@
   - Verified: `eslint` clean, `next build` green (typecheck included), zero lingering `Next.js Expert` / `NextExpert` / `Hono Expert` references in app code
 
 ## Current Status
-Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, Muse Spark cascade integration, and fully synchronized Memory Bank.
+Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, Muse Spark cascade integration, Muse-exclusive thinking effort levels (`xhigh`/`max`), and fully synchronized Memory Bank.
+
+## Completed Modules (cont.)
+- [x] **Muse-Exclusive Thinking Effort Levels (`xhigh` / `max`)**:
+  - Five-level `ThinkingConfig` with `MuseThinkingLevel` vs `GeminiThinkingLevel` split (`/types/index.ts`); settings/progress/message threading fields
+  - Provider helpers + 6 `node:test` cases (`/lib/thinking-levels.ts`, `/lib/thinking-levels.test.ts`): `xhigh`/`max` accepted, Gemini maps them to `high`
+  - Compile route forwards full level to Muse (`reasoning_effort` + `thinkingConfig`), mapped config to Gemini (`/app/api/compile/route.ts`)
+  - Store defaults + migration-safe validation (`/hooks/useRepoStore.ts`); Thinking Effort panel on `/settings`
+  - Dynamic thinking-level indicators (`/components/StepLoader.tsx` with Muse-only badge, `/components/ChatCompiler.tsx`, `/components/RepoWorkspace.tsx`)
+  - Verified: 42/42 `node:test`, `tsc` clean, `eslint` clean, `pnpm build` green
 
 ## Completed Modules (cont.)
 - [x] **Multi-Turn Compilation with History Context Caching**:

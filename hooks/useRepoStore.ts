@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore } from 'react';
 import { Repo, AppSettings, ChatMessage, IngestionSnapshot, ModelConfig } from '@/types';
+import { normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
 import { formatCompiledPrompt, extractSuggestedRefactors } from '@/lib/utils';
 import {
   saveSnapshotToDB,
@@ -133,6 +134,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   githubPat: '',
   customApiKey: '',
   museApiKey: '',
+  thinkingLevel: 'high',
+  thinkingSummaries: 'auto',
   preferredModel: 'gemini-4-argon',
   defaultMode: 'agentic',
   maxAgenticRounds: 3,
@@ -203,6 +206,13 @@ export function useRepoStore() {
         return {
           ...DEFAULT_SETTINGS,
           ...parsed,
+          // Accept the full five-level scale (xhigh/max included) —
+          // normalize rather than clamp so Muse-only tiers survive reloads.
+          thinkingLevel: normalizeThinkingLevel(parsed.thinkingLevel, DEFAULT_SETTINGS.thinkingLevel ?? 'high'),
+          thinkingSummaries: normalizeThinkingSummaries(
+            parsed.thinkingSummaries,
+            DEFAULT_SETTINGS.thinkingSummaries ?? 'auto'
+          ),
           models,
         };
       }

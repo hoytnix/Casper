@@ -99,7 +99,12 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
         <div className="space-y-2 pt-2 border-t border-white/[0.06]">
           <p className="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            <span>Agent Reasoning &amp; Thinking Trail (thinkingLevel: high)</span>
+            <span>Agent Reasoning &amp; Thinking Trail (thinkingLevel: {progress.thinkingLevel || 'high'})</span>
+            {(progress.thinkingLevel === 'xhigh' || progress.thinkingLevel === 'max') && (
+              <span className="text-[10px] font-mono text-fuchsia-300 bg-fuchsia-500/10 px-2 py-0.5 rounded border border-fuchsia-500/30">
+                Muse-only
+              </span>
+            )}
           </p>
           <div className="p-3 rounded-xl bg-purple-950/20 border border-purple-500/30 text-xs font-mono text-purple-200 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
             {progress.thinkingContent}

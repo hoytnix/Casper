@@ -9,6 +9,12 @@ import {
   toGenAiHistory,
   toMuseMessages,
 } from '@/lib/chat-history';
+import {
+  buildGeminiThinkingConfig,
+  buildMuseThinkingPayload,
+  normalizeThinkingLevel,
+  normalizeThinkingSummaries,
+} from '@/lib/thinking-levels';
 
 const NEXTJS_EXPERT_SYSTEM_INSTRUCTION = `You are Casper, the friendly ghost who reads all your code — a Principal Architect and Autonomous Prompt Compiler specializing exclusively in Next.js 15+ App Router, React Server Components (RSC), Server Actions, Route Handlers, and modern TypeScript architecture.
 You have been given a Next.js repository structure and the developer's requested improvements.
@@ -108,6 +114,8 @@ async function* streamMuseCompletionChunks(args: {
   historyMessages?: { role: string; content: string }[];
   temperature: number;
   timeoutMs: number;
+  thinkingLevel?: string;
+  thinkingSummaries?: string;
 }): AsyncGenerator<{ candidates: { content: { parts: { text: string }[] } }[] }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), args.timeoutMs);
@@ -125,6 +133,11 @@ async function* streamMuseCompletionChunks(args: {
         model: args.model,
         stream: true,
         temperature: args.temperature,
+        // Muse Spark carries the full five-level scale (xhigh/max included).
+        ...buildMuseThinkingPayload(
+          normalizeThinkingLevel(args.thinkingLevel),
+          normalizeThinkingSummaries(args.thinkingSummaries)
+        ),
         messages: [
           { role: 'system', content: args.systemInstruction },
           ...(Array.isArray(args.historyMessages) ? args.historyMessages : []),
@@ -599,8 +612,9 @@ ${treeListing}
             let streamModel = '';
             let streamPass = 1;
 
-            const thinkingLevel = body.thinkingLevel || 'high';
-            const thinkingSummaries = body.thinkingSummaries || 'auto';
+            const thinkingLevel = normalizeThinkingLevel(body.thinkingLevel);
+            const thinkingSummaries = normalizeThinkingSummaries(body.thinkingSummaries);
+            const geminiThinkingConfig = buildGeminiThinkingConfig(thinkingLevel, thinkingSummaries);
 
             for (let pass = 1; pass <= 2; pass++) {
               for (const model of cascadingModels) {
@@ -623,6 +637,8 @@ ${treeListing}
                       historyMessages: museHistory,
                       temperature: mode === 'idea' ? 0.4 : 0.2,
                       timeoutMs,
+                      thinkingLevel,
+                      thinkingSummaries,
                     })[Symbol.asyncIterator]();
                     const firstResult = await withTimeout(
                       museIterator.next(),
@@ -651,10 +667,9 @@ ${treeListing}
                       temperature: mode === 'idea' ? 0.4 : 0.2,
                     };
                     if (useThinking) {
-                      config.thinkingConfig = {
-                        thinkingLevel,
-                        thinkingSummaries,
-                      };
+                      // Gemini accepts only low/medium/high — Muse-only
+                      // xhigh/max arrive here already mapped to high.
+                      config.thinkingConfig = geminiThinkingConfig;
                     }
 
                     // Fresh stateful chat session per attempt: the normalized
@@ -707,6 +722,7 @@ ${treeListing}
             sendEvent({
               type: 'thinking_start',
               message: `Model thinking initialized (level: ${thinkingLevel})...`,
+              thinkingLevel,
             });
 
             let thinkingStarted = true;

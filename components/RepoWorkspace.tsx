@@ -41,6 +41,7 @@ import {
 import { warmUpLocalContextRouter, routeNextJsContext } from '@/lib/local-context-router';
 import { detectRepositoryFramework, frameworkBadgeLabel } from '@/lib/framework-detector';
 import { formatCostUsd, calculateModelCost, resolveModelPricing, extractSuggestedRefactors } from '@/lib/utils';
+import { normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
 
 interface RepoWorkspaceProps {
   repo: Repo;
@@ -450,6 +451,11 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           treeListing.length + contextSourceChars + promptText.length + 500;
         const initialInputTokens = Math.max(1, Math.ceil(estimatedInputChars / 4));
 
+        // Thinking effort travels with every compile request. xhigh/max are
+        // Muse-only tiers; the route maps them to high for Gemini models.
+        const requestThinkingLevel = normalizeThinkingLevel(settings.thinkingLevel);
+        const requestThinkingSummaries = normalizeThinkingSummaries(settings.thinkingSummaries);
+
         const assistantMsgId = `assistant-${Date.now()}`;
         currentAssistantMsgId = assistantMsgId;
         const assistantMsg: ChatMessage = {
@@ -457,6 +463,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           role: 'assistant',
           content: '',
           timestamp: Date.now(),
+          thinkingLevel: requestThinkingLevel,
           snapshotMeta: {
             filesCount: downloadedInvestigated.length,
             tokensCount: initialInputTokens,
@@ -468,6 +475,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             routerLatencyMs,
             toolTraces,
             explorationTrail: [explorationStepRecord],
+            thinkingLevel: requestThinkingLevel,
           },
         };
 
@@ -508,6 +516,8 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             customApiKey: settings.customApiKey,
             customMuseApiKey: settings.museApiKey,
             githubPat: settings.githubPat,
+            thinkingLevel: requestThinkingLevel,
+            thinkingSummaries: requestThinkingSummaries,
             routerEngine: routerEngineUsed,
             models: settings.models,
             maxRounds: settings.maxAgenticRounds || 3,
@@ -551,6 +561,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           let serverFramework: string | null = null;
           let fallbackPass = 1;
           let accumulatedThinking = '';
+          let serverThinkingLevel = requestThinkingLevel;
           let serverInputTokens = 3500;
           let finalCostDetails: ModelCostDetails | null = null;
 
@@ -615,11 +626,16 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                     costDetails: initialCost,
                   }));
                 } else if (evt.type === 'thinking_start') {
+                  serverThinkingLevel = normalizeThinkingLevel(
+                    evt.thinkingLevel,
+                    requestThinkingLevel
+                  );
                   setProgress((prev) => ({
                     ...prev,
                     step: 'compiling_prompt',
                     message: evt.message || 'Model thinking in progress...',
                     thinkingContent: '',
+                    thinkingLevel: serverThinkingLevel,
                   }));
                 } else if (evt.type === 'thinking_chunk') {
                   accumulatedThinking += evt.text || '';
@@ -656,6 +672,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                             ...m,
                             content: cleanDisplayPrompt,
                             thinkingContent: accumulatedThinking || undefined,
+                            thinkingLevel: serverThinkingLevel,
                             costDetails: dynamicCost,
                             snapshotMeta: {
                               ...m.snapshotMeta!,
@@ -668,6 +685,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                               mode: 'agentic' as const,
                               explorationTrail: currentTrail,
                               thinkingContent: accumulatedThinking || undefined,
+                              thinkingLevel: serverThinkingLevel,
                               costDetails: dynamicCost,
                               inputTokens: serverInputTokens,
                               outputTokens: currentOutputTokens,
@@ -799,6 +817,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                   ...m,
                   content: finalCleanContent,
                   thinkingContent: accumulatedThinking || undefined,
+                  thinkingLevel: serverThinkingLevel,
                   costDetails: calculatedCost,
                   suggestedRefactors: m.suggestedRefactors || (finalParsedRefactors.length > 0 ? finalParsedRefactors : undefined),
                   snapshotMeta: {
@@ -812,6 +831,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                     mode: 'agentic' as const,
                     explorationTrail: [explorationStepRecord],
                     thinkingContent: accumulatedThinking || undefined,
+                    thinkingLevel: serverThinkingLevel,
                     costDetails: calculatedCost,
                     inputTokens: calculatedCost.inputTokens,
                     outputTokens: calculatedCost.outputTokens,
