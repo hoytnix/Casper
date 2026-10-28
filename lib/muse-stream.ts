@@ -209,7 +209,7 @@ export function buildMuseResponsesRequestBody(input: MuseRequestInput): Record<s
     stream: true,
     temperature: input.temperature,
     max_output_tokens: MUSE_MAX_OUTPUT_TOKENS,
-    reasoning_effort: effort,
+    reasoning: { effort },
     ...(input.searchGrounding === true
       ? { tools: [{ type: 'web_search', search_context_size: input.searchContextSize ?? 'medium' }] }
       : {}),

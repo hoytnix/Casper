@@ -234,7 +234,8 @@ test('responses body carries web_search grounding with input array', () => {
   assert.deepEqual(grounded['tools'], [{ type: 'web_search', search_context_size: 'high' }]);
   assert.equal(grounded['max_output_tokens'], MUSE_MAX_OUTPUT_TOKENS);
   assert.ok(!('max_tokens' in grounded));
-  assert.equal(grounded['reasoning_effort'], 'high');
+  assert.deepEqual(grounded['reasoning'], { effort: 'high' });
+  assert.ok(!('reasoning_effort' in grounded), 'top-level reasoning_effort 400s on /responses');
   const input = grounded['input'] as { role: string; content: string }[];
   assert.deepEqual(
     input.map((m) => m.role),

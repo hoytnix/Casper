@@ -125,3 +125,7 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - `buildMuseThinkingPayload` sends only `reasoning_effort` (`/lib/thinking-levels.ts`); `buildMuseRequestBody` strips stale `thinkingConfig` (`/lib/muse-stream.ts`); Nano `availability({ outputLanguage: 'en' })` matches `create()` options (`/lib/local-context-router.ts`)
   - Regression coverage in `/lib/thinking-levels.test.ts` + `/lib/muse-stream.test.ts`
   - Verified: 62/62 `node:test`, `tsc` clean, `eslint` clean, `pnpm build` green
+- [x] **Dual-Provider Search Grounding via Muse Responses API**:
+  - Chat-Completions `web_search` 400 root-caused to Responses-only grounding; chat body never emits `tools` (`/lib/muse-stream.ts`)
+  - New Responses transport: endpoint builder, request body (`input` array, `max_output_tokens`, nested `reasoning: { effort }`, conditional `web_search`), SSE delta parser (`/lib/muse-stream.ts`, 4 new tests); route branches grounded Muse to `/responses` and defaults base to `https://api.meta.ai/v1` (`/app/api/compile/route.ts`); SSE error/parse logging split (`/components/RepoWorkspace.tsx`); settings copy updated (`/app/settings/page.tsx`)
+  - Verified: 66/66 `node:test`, `tsc` clean, `eslint` clean, `pnpm build` green
