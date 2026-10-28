@@ -1,6 +1,14 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Replaced the static 4-choice empty-state heuristic with a Local AI Suggested Architectural Directives pipeline:
+- **Types (`/types/index.ts`)**: `SuggestedDirective`, `DirectiveGenerationContext`, `DirectiveGenerationStatus` appended; existing exports untouched.
+- **Validators (`/lib/suggestion-schemas.ts`, new)**: edge-safe Zod `suggestedDirectiveSchema` / `suggestedDirectiveListSchema` + `sanitizeDirectives` (dedupe, slice 4) + `buildFallbackDirectives` (deterministic graph fallback, `Fallback Keyword` engine).
+- **Generator (`/lib/local-context-router.ts`)**: `generateSuggestedDirectives()` cascades Qwen MLC (temp 0.9) → Nano clone → Arctic-Embed-XS templates → nonce-shuffled fallback; shared `parseJsonArray` helper; MLC `console.log` init spam removed; never throws, always returns exactly 4.
+- **Grounding (`/lib/nextjs-code-graph.ts`, `/lib/nextjs-indexer.ts`)**: `summarizeGraphForDirectives()` (≤1200 chars) + `countRolesForDirectives()`; deterministic, side-effect free; existing exports untouched.
+- **Consumer (`/components/ChatCompiler.tsx`)**: static `SUGGESTED_PROMPTS` memo + `hasApi`/`hasComponents`/`hasHooks` branches + 8 hardcoded strings deleted; skeleton cards while generating, engine badge + refresh button, dismiss-X persisted; click still calls `setInputText(prompt)` without auto-submit.
+- **Persistence (`/hooks/useRepoStore.ts`, `/components/RepoWorkspace.tsx`)**: `antigravity_directives_` last-good cache (Zod re-validated) + `antigravity_dismissed_` prompt hashes; pre-warm stays fire-and-forget, local-only, no `/api/compile` cost, no wrangler sync.
+- Verified: `tsc --noEmit` clean, `eslint` clean, `pnpm build` green, 66/66 `node:test` pass, 10/10 behavior probes pass (reject empty/duplicates/missing-anchors, fallback grounding, helper determinism).
 Added opt-in Search Grounding across settings, builders, route, and UI:
 - **Types (`/types/index.ts`)**: `SearchContextSize = 'low' | 'medium' | 'high'`; optional `searchGrounding` / `searchContextSize` on `AppSettings` (optional per repo convention — the brief's required-field sketch was not adopted).
 - **Normalizer (`/lib/search-grounding.ts`, new)**: pure `isSearchContextSize` / `normalizeSearchContextSize` / `SEARCH_CONTEXT_SIZES`; 3 `node:test` cases in `/lib/search-grounding.test.ts` (red-first on missing module).

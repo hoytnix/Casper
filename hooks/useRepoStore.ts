@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useSyncExternalStore } from 'react';
-import { Repo, AppSettings, ChatMessage, IngestionSnapshot, ModelConfig } from '@/types';
+import { Repo, AppSettings, ChatMessage, IngestionSnapshot, ModelConfig, SuggestedDirective } from '@/types';
+import { suggestedDirectiveListSchema } from '@/lib/suggestion-schemas';
 import { normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
 import { normalizeSearchContextSize } from '@/lib/search-grounding';
 import { formatCompiledPrompt, extractSuggestedRefactors } from '@/lib/utils';
@@ -17,7 +18,72 @@ const STORAGE_KEYS = {
   ACTIVE_REPO_ID: 'antigravity_active_repo_id',
   CHATS_PREFIX: 'antigravity_chats_',
   COMMIT_SHAS: 'antigravity_commit_shas_v1',
+  DIRECTIVES_PREFIX: 'antigravity_directives_',
+  DISMISSED_PREFIX: 'antigravity_dismissed_',
 };
+
+function directivesKey(repoId: string): string {
+  return STORAGE_KEYS.DIRECTIVES_PREFIX + repoId;
+}
+
+function dismissedKey(repoId: string): string {
+  return STORAGE_KEYS.DISMISSED_PREFIX + repoId;
+}
+
+// Per-repo last-good suggestion cache (localStorage only, best-effort).
+// Re-validated on load; invalid entries are dropped.
+export function loadCachedDirectives(repoId: string): SuggestedDirective[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(directivesKey(repoId));
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    const list = Array.isArray(parsed) ? parsed : (parsed as { directives?: unknown }).directives;
+    const checked = suggestedDirectiveListSchema.safeParse(list);
+    if (checked.success) return checked.data.slice(0, 4);
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCachedDirectives(repoId: string, directives: SuggestedDirective[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const checked = suggestedDirectiveListSchema.safeParse(directives.slice(0, 4));
+    if (!checked.success) return;
+    localStorage.setItem(
+      directivesKey(repoId),
+      JSON.stringify({ directives: checked.data, timestamp: Date.now() })
+    );
+  } catch {
+    // Best-effort: quota errors are caught and ignored; never break chat save/load.
+  }
+}
+
+export function loadDismissedPrompts(repoId: string): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(dismissedKey(repoId));
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((p): p is string => typeof p === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveDismissedPrompt(repoId: string, prompt: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const current = loadDismissedPrompts(repoId);
+    current.add(prompt.toLowerCase().trim());
+    localStorage.setItem(dismissedKey(repoId), JSON.stringify(Array.from(current).slice(-50)));
+  } catch {
+    // Best-effort: quota errors are caught and ignored.
+  }
+}
 
 const DEFAULT_REPOS: Repo[] = [
   {

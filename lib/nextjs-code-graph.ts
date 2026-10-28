@@ -280,6 +280,26 @@ export function serializeCodeGraphForPrompt(graph: NextJsCodeGraph): string {
   return summary;
 }
 
+export function summarizeGraphForDirectives(graph: NextJsCodeGraph): string {
+  const lines: string[] = [];
+  for (const rh of graph.routeMap.routeHandlers.slice(0, 8)) {
+    lines.push(`route @[/${rh.path}] [${rh.methods.join(',')}]`);
+  }
+  for (const pg of graph.routeMap.pages.slice(0, 8)) {
+    lines.push(`page @[/${pg.path}] -> ${(pg.components.slice(0, 3).join(',') || 'none')}`);
+  }
+  let shown = 0;
+  for (const sym of Object.values(graph.symbols)) {
+    if (sym.isExported && shown < 12) {
+      lines.push(`${sym.type} ${sym.name} @[/${sym.filePath}]`);
+      shown++;
+    }
+  }
+  let out = lines.join('; ');
+  if (out.length > 1200) out = out.slice(0, 1200);
+  return out;
+}
+
 export function traceDependencies(
   symbolOrPath: string,
   graph: NextJsCodeGraph

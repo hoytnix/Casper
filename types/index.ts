@@ -350,6 +350,25 @@ export interface TokenCostSummary {
   }[];
 }
 
+export interface SuggestedDirective {
+  id: string;
+  title: string;
+  prompt: string;
+  rationale: string;
+  anchorPaths: string[];
+  engine: string;
+}
+
+export interface DirectiveGenerationContext {
+  repoLabel: string;
+  fileCount: number;
+  roles: Record<string, number>;
+  graphSummary: string;
+  relatedPaths: string[];
+}
+
+export type DirectiveGenerationStatus = 'idle' | 'generating' | 'ready' | 'fallback' | 'error';
+
 // Backwards compatibility aliases
 export type Transaction = TokenCostRecord;
 export type SpendingSummary = TokenCostSummary;

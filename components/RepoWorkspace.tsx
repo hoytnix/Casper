@@ -110,7 +110,11 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
         if (isMounted) setIsBranchLoading(false);
       });
 
-    // Pre-warm local AI router if snapshot files exist
+    // Pre-warm local AI router if snapshot files exist.
+    // Suggestion directives reuse these warmed Nano/Arctic engines client-side
+    // (ChatCompiler calls generateSuggestedDirectives locally — no server
+    // /api/compile fetch, no API cost, offline-safe). Fire-and-forget: no
+    // blocking await. No wrangler binding sync needed (N/A, local-only).
     if (snapshot && snapshot.files && snapshot.files.length > 0) {
       warmUpLocalContextRouter(
         snapshot.files,

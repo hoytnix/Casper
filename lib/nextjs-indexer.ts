@@ -168,6 +168,14 @@ export function buildNextJsRepoIndex(files: SourceFile[]): NextJsFileCard[] {
   });
 }
 
+export function countRolesForDirectives(cards: NextJsFileCard[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const card of cards) {
+    counts[card.role] = (counts[card.role] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export function expandWithNextJsImportClosure(
   selectedPaths: string[],
   repoIndex: NextJsFileCard[],

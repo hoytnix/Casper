@@ -15,11 +15,16 @@ import {
   Compass,
   AlertTriangle,
   GitBranch,
+  RefreshCw,
+  Loader2,
+  X,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
-import { ChatMessage, IngestionProgress, IngestionSnapshot, Repo } from '@/types';
+import { ChatMessage, IngestionProgress, IngestionSnapshot, Repo, SuggestedDirective, DirectiveGenerationStatus } from '@/types';
 import { StepLoader } from './StepLoader';
 import { formatCompiledPrompt, extractSuggestedRefactors } from '@/lib/utils';
+import { generateSuggestedDirectives } from '@/lib/local-context-router';
+import { loadCachedDirectives, saveCachedDirectives, loadDismissedPrompts, saveDismissedPrompt } from '@/hooks/useRepoStore';
 
 interface ChatCompilerProps {
   repo: Repo;
@@ -49,7 +54,11 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
   const [expandedTrails, setExpandedTrails] = useState<Set<string>>(new Set());
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set());
   const [minimizedMsgs, setMinimizedMsgs] = useState<Set<string>>(new Set());
+  const [directives, setDirectives] = useState<SuggestedDirective[]>([]);
+  const [directiveStatus, setDirectiveStatus] = useState<DirectiveGenerationStatus>('idle');
+  const [directiveEngine, setDirectiveEngine] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const directiveReqId = useRef(0);
 
   const toggleMinimize = (msgId: string) => {
     setMinimizedMsgs((prev) => {
@@ -125,29 +134,65 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
     }
   };
 
-  const SUGGESTED_PROMPTS = React.useMemo(() => {
+  const repoKey = `${repo.owner}/${repo.repo}/${repo.branch}`;
+  const snapshotFilesKey = (snapshot?.files || []).length;
+
+  const refreshDirectives = React.useCallback(async (isManual = false) => {
     const files = snapshot?.files || [];
-    const hasApi = files.some(f => f.path.includes('api') || f.path.includes('route'));
-    const hasComponents = files.some(f => f.path.includes('components'));
-    const hasHooks = files.some(f => f.path.includes('hooks'));
-
-    if (files.length > 0) {
-      const prompts = [];
-      if (hasApi) prompts.push('Implement robust Zod validation schemas and error handling across all API route handlers.');
-      if (hasComponents) prompts.push('Optimize React Server Component boundaries and replace client state hooks with async Server Actions.');
-      if (hasHooks) prompts.push('Refactor global state stores into clean custom hooks with strict TypeScript type signatures.');
-      prompts.push('Implement comprehensive Suspense fallbacks, error boundaries, and loading skeletons across the App Router.');
-      prompts.push('Upgrade security headers, CSRF middleware, and rate-limiting across all Next.js endpoints.');
-      return prompts.slice(0, 4);
+    if (messages.length > 0 && !isManual) return;
+    const reqId = ++directiveReqId.current;
+    setDirectiveStatus('generating');
+    try {
+      // Instant hydrate from last-good cache, then refresh in background.
+      if (!isManual) {
+        const cached = loadCachedDirectives(repoKey);
+        if (cached.length > 0 && reqId === directiveReqId.current) {
+          setDirectives(cached);
+        }
+      }
+      const dismissed = loadDismissedPrompts(repoKey);
+      const seed = `${repo.owner}/${repo.repo}-${Date.now()}-${Math.random()}`;
+      const result = await generateSuggestedDirectives(seed, files.slice(0, 40), `${repo.owner}/${repo.repo}-${repo.branch}`);
+      if (reqId !== directiveReqId.current) return;
+      const filtered = result.directives.filter(
+        (d) => !dismissed.has(d.prompt.toLowerCase().trim())
+      );
+      const finalList = filtered.length > 0 ? filtered.slice(0, 4) : result.directives.slice(0, 4);
+      setDirectives(finalList);
+      setDirectiveEngine(result.engineUsed);
+      setDirectiveStatus(result.engineUsed === 'Fallback Keyword' ? 'fallback' : 'ready');
+      if (finalList.length > 0) saveCachedDirectives(repoKey, finalList);
+    } catch {
+      // Local try/catch with fallback (app.onError equivalent): never blank grid, never throw to render.
+      if (reqId !== directiveReqId.current) return;
+      const cached = loadCachedDirectives(repoKey);
+      if (cached.length > 0) {
+        setDirectives(cached);
+        setDirectiveStatus('fallback');
+      } else {
+        setDirectiveStatus('error');
+      }
     }
+  }, [messages.length, repo.branch, repo.owner, repo.repo, repoKey, snapshot]);
 
-    return [
-      `Refactor ${repo.repo} state management into clean custom hooks with strict TypeScript signatures.`,
-      'Implement complete error boundaries, retry backoff logic, and Suspense fallbacks across the App Router.',
-      'Add strict Zod schemas to validate all Server Actions and Route Handlers with exhaustive type tests.',
-      'Upgrade UI to dark-mode glassmorphism with high-contrast typography and accessible keyboard controls.',
-    ];
-  }, [repo, snapshot]);
+  // Generate fresh repo-grounded directives on workspace load / branch switch.
+  // Debounced so rapid branch switches collapse into one generation.
+  useEffect(() => {
+    if (messages.length > 0) return;
+    if (!snapshot || !snapshot.files || snapshot.files.length === 0) return;
+    if (isBusy) return;
+    const t = setTimeout(() => {
+      refreshDirectives(false);
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshotFilesKey, repo.owner, repo.repo, repo.branch, messages.length]);
+
+  const handleDismissDirective = (e: React.MouseEvent, prompt: string) => {
+    e.stopPropagation();
+    saveDismissedPrompt(repoKey, prompt);
+    setDirectives((prev) => prev.filter((d) => d.prompt !== prompt));
+  };
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#07090e]/60 overflow-hidden">
@@ -177,22 +222,76 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
 
             {/* Quick Directive Cards */}
             <div className="space-y-3 text-left max-w-xl mx-auto pt-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                <span>Suggested Architectural Directives</span>
+              <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-400">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Suggested Architectural Directives</span>
+                  {directiveEngine && (
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]">
+                      {directiveEngine}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => refreshDirectives(true)}
+                  disabled={directiveStatus === 'generating'}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition disabled:opacity-40"
+                  title="Refresh directives (fresh Local AI generation)"
+                >
+                  {directiveStatus === 'generating' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                </button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {SUGGESTED_PROMPTS.map((prompt, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setInputText(prompt)}
-                    className="p-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-white/[0.06] hover:border-indigo-500/40 text-left text-xs text-slate-300 hover:text-white transition flex items-start gap-2.5 group cursor-pointer shadow-sm active:scale-[0.99]"
-                  >
-                    <span className="font-mono text-slate-500 text-[11px] mt-0.5">0{idx + 1}.</span>
-                    <span className="line-clamp-2 leading-relaxed">{prompt}</span>
-                  </button>
-                ))}
+                {directiveStatus === 'generating' && directives.length === 0 ? (
+                  [0, 1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="p-3.5 rounded-xl bg-slate-900/60 border border-white/[0.06] animate-pulse"
+                    >
+                      <div className="h-3 rounded bg-slate-800 w-3/4 mb-2" />
+                      <div className="h-3 rounded bg-slate-800/70 w-full" />
+                    </div>
+                  ))
+                ) : (
+                  directives.map((d, idx) => (
+                    <div
+                      key={d.id}
+                      className="relative p-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-white/[0.06] hover:border-indigo-500/40 text-left text-xs text-slate-300 hover:text-white transition shadow-sm"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setInputText(d.prompt)}
+                        className="flex items-start gap-2.5 w-full text-left cursor-pointer active:scale-[0.99]"
+                      >
+                        <span className="font-mono text-slate-500 text-[11px] mt-0.5">0{idx + 1}.</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block leading-relaxed line-clamp-2">{d.title}</span>
+                          <span className="block mt-1 text-[11px] text-slate-500 leading-relaxed">
+                            {d.rationale || d.engine}
+                            {d.anchorPaths.length > 0 && (
+                              <span className="ml-1.5 font-mono px-1 py-px rounded bg-slate-800 text-slate-400">
+                                {d.anchorPaths.length} anchor{d.anchorPaths.length === 1 ? '' : 's'}
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDismissDirective(e, d.prompt)}
+                        className="absolute top-1.5 right-1.5 p-1 rounded text-slate-600 hover:text-slate-300 hover:bg-slate-800 transition"
+                        title="Dismiss this directive"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
