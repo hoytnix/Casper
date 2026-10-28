@@ -51,7 +51,15 @@
   - Verified: `eslint` clean, `next build` green (typecheck included), zero lingering `Next.js Expert` / `NextExpert` / `Hono Expert` references in app code
 
 ## Current Status
-Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, Muse Spark cascade integration, Muse-exclusive thinking effort levels (`xhigh`/`max`), and fully synchronized Memory Bank.
+Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, Muse Spark cascade integration, Muse-exclusive thinking effort levels (`xhigh`/`max`), MAX debilitation protocols across Prompt/Ideas/BTW, and fully synchronized Memory Bank.
+
+## Completed Modules (cont.)
+- [x] **Muse Spark MAX Debilitation Protocols (Prompt / Ideas / BTW)**:
+  - Prompt-mode elevation protocol in both Next.js + Hono expert instructions (`/app/api/compile/route.ts`): boundary-assumption interrogation, dependency-first ordering, edge invariants, @[/path] citation rigor, mandatory dead-code purge
+  - Ideas-mode hostile Venture Technologist rewrite (both frameworks): 77→7 via RICE + VRIN-EO, high-effort/low-EO kills, breakdown tables, grounded @[/path] targets
+  - BTW-mode uncompromising assistant rewrite (both frameworks): call-graph tracing, exact entry→handler flows, line-precise citations, filler ban
+  - `MUSE_MAX_DEBILITATION_OVERLAY` auto-prepended at `xhigh`/`max` thinking; normalization hoisted pre-estimation for accurate token costing
+  - Verified: 42/42 `node:test`, `tsc` clean, `eslint` clean, `pnpm build` green
 
 ## Completed Modules (cont.)
 - [x] **Muse-Exclusive Thinking Effort Levels (`xhigh` / `max`)**:

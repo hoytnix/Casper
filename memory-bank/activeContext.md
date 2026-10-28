@@ -1,6 +1,13 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Implemented Muse Spark MAX debilitation protocols across Prompt/Ideas/BTW modes (`/app/api/compile/route.ts` only):
+- **Prompt mode (Next.js + Hono)**: `PROMPT DEBILITATION & ELEVATION PROTOCOL` — interrogates vague prompts against the investigated snapshot, enforces dependency-first ordering (types → validators → actions/middleware → handlers/UI), injects edge invariants, demands exact @[/path] citations, requires dead-code purge.
+- **Ideas mode (Next.js + Hono)**: hostile Venture Technologist rewrite — 77 candidates stress-tested via RICE + VRIN-EO, high-effort/low-engine-optimization concepts killed in screening, top 7 survivors with breakdown tables + exact @[/path] targets.
+- **BTW mode (Next.js + Hono)**: uncompromising Senior Codebase Assistant rewrite — traces import closures/call edges, explains exact entry→handler request flows, line-precise @[/path] citations, forbids generic filler.
+- **MAX overlay**: `MUSE_MAX_DEBILITATION_OVERLAY` prepended when `thinkingLevel` is `xhigh`/`max`; thinking normalization hoisted above token estimation so overlay length counts toward input tokens and both provider paths share it (later duplicate normalization removed).
+- Client (`/components/RepoWorkspace.tsx`) unchanged — already forwards `thinkingLevel` and captures server level.
+- Verified: 42/42 `node:test` pass, `tsc --noEmit` clean, `eslint` clean on touched file, `pnpm build` green.
 Implemented Muse-exclusive Thinking Effort Configuration (`xhigh`, `max` Muse-only; Gemini stays `low`/`medium`/`high`):
 - **Types (`/types/index.ts`)**: `MuseThinkingLevel` (5 tiers), `GeminiThinkingLevel` (3 tiers), `ThinkingConfig` extended to all five; `thinkingLevel`/`thinkingSummaries` on `AppSettings`, `thinkingLevel` on `IngestionProgress`, `ChatMessage`, and `snapshotMeta`.
 - **Helpers (`/lib/thinking-levels.ts`, new)**: `normalizeThinkingLevel`/`normalizeThinkingSummaries` (accept `xhigh`/`max`, invalid → `high`/`auto`), `resolveGeminiThinkingLevel` (`xhigh`/`max` → `high`), `buildMuseThinkingPayload` (`reasoning_effort` + `thinkingConfig`) / `buildGeminiThinkingConfig`. 6 `node:test` cases in `/lib/thinking-levels.test.ts`.
