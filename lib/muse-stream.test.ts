@@ -4,9 +4,15 @@ import {
   MUSE_MAX_OUTPUT_TOKENS,
   buildMuseEndpoint,
   buildMuseRequestBody,
+  buildMuseResponsesEndpoint,
+  buildMuseResponsesRequestBody,
   createMuseStreamParser,
   extractMuseDeltaText,
+  extractMuseResponsesDeltaText,
+  flushMuseResponsesStreamParser,
   flushMuseStreamParser,
+  normalizeMuseResponsesEffort,
+  pushMuseResponsesSseText,
   pushMuseSseText,
   type MuseStreamParser,
 } from './muse-stream.ts';
@@ -134,7 +140,11 @@ test('request body pins an explicit output cap so completions are never single-t
   );
 });
 
-test('request body attaches web_search tool only when grounding is enabled', () => {
+test('request body never emits web_search tools (Chat Completions 400 regression)', () => {
+  // Meta's Chat Completions endpoint rejects `tools[0]` with
+  // "`tools[0]` did not match any supported type" — search grounding is
+  // Responses-API-only. The Muse body must omit `tools` even when grounding
+  // is enabled; Gemini `googleSearch` remains the grounded path.
   const grounded = buildMuseRequestBody({
     model: 'muse-spark-1.3',
     systemInstruction: 'sys',
@@ -143,7 +153,7 @@ test('request body attaches web_search tool only when grounding is enabled', () 
     searchGrounding: true,
     searchContextSize: 'high',
   });
-  assert.deepEqual(grounded['tools'], [{ type: 'web_search', search_context_size: 'high' }]);
+  assert.ok(!('tools' in grounded), 'web_search triggers Muse 400 on chat/completions');
   // Truncation-fix fields survive grounding.
   assert.equal(grounded['stream'], true);
   assert.equal(grounded['max_tokens'], MUSE_MAX_OUTPUT_TOKENS);
@@ -155,7 +165,7 @@ test('request body attaches web_search tool only when grounding is enabled', () 
     temperature: 0.2,
     searchGrounding: true,
   });
-  assert.deepEqual(defaultSize['tools'], [{ type: 'web_search', search_context_size: 'medium' }]);
+  assert.ok(!('tools' in defaultSize));
 
   const ungrounded = buildMuseRequestBody({
     model: 'muse-spark-1.3',
@@ -197,4 +207,68 @@ test('request body never emits thinkingConfig (Muse 400 regression)', () => {
   });
   assert.equal(body['reasoning_effort'], 'max');
   assert.ok(!('thinkingConfig' in body), 'thinkingConfig triggers Muse 400');
+});
+
+test('responses endpoint appends the responses suffix', () => {
+  assert.equal(
+    buildMuseResponsesEndpoint('https://api.meta.ai/v1'),
+    'https://api.meta.ai/v1/responses'
+  );
+  assert.equal(
+    buildMuseResponsesEndpoint('https://api.meta.ai/v1/'),
+    'https://api.meta.ai/v1/responses'
+  );
+});
+
+test('responses body carries web_search grounding with input array', () => {
+  const grounded = buildMuseResponsesRequestBody({
+    model: 'muse-spark-1.3',
+    systemInstruction: 'sys',
+    prompt: 'user-goal',
+    historyMessages: [{ role: 'user', content: 'prior' }],
+    temperature: 0.2,
+    thinkingPayload: { reasoning_effort: 'high' },
+    searchGrounding: true,
+    searchContextSize: 'high',
+  });
+  assert.deepEqual(grounded['tools'], [{ type: 'web_search', search_context_size: 'high' }]);
+  assert.equal(grounded['max_output_tokens'], MUSE_MAX_OUTPUT_TOKENS);
+  assert.ok(!('max_tokens' in grounded));
+  assert.equal(grounded['reasoning_effort'], 'high');
+  const input = grounded['input'] as { role: string; content: string }[];
+  assert.deepEqual(
+    input.map((m) => m.role),
+    ['system', 'user', 'user']
+  );
+
+  const ungrounded = buildMuseResponsesRequestBody({
+    model: 'muse-spark-1.3',
+    systemInstruction: 'sys',
+    prompt: 'user-goal',
+    temperature: 0.2,
+  });
+  assert.ok(!('tools' in ungrounded));
+});
+
+test('responses effort maps max onto the documented xhigh ceiling', () => {
+  assert.equal(normalizeMuseResponsesEffort('max'), 'xhigh');
+  assert.equal(normalizeMuseResponsesEffort('xhigh'), 'xhigh');
+  assert.equal(normalizeMuseResponsesEffort('bogus'), 'high');
+});
+
+test('responses stream reassembles output_text deltas and stops at completed', () => {
+  const parser = createMuseStreamParser();
+  const out: string[] = [];
+  const payload =
+    `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: 'Hello' })}\n\n` +
+    `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: ' world' })}\n\n` +
+    `data: ${JSON.stringify({ type: 'response.completed' })}\n\n`;
+  for (const chunk of [payload.slice(0, 29), payload.slice(29)]) {
+    out.push(...pushMuseResponsesSseText(parser, chunk));
+    if (parser.finished) break;
+  }
+  if (!parser.finished) out.push(...flushMuseResponsesStreamParser(parser));
+  assert.equal(out.join(''), 'Hello world');
+  assert.equal(parser.finished, true);
+  assert.equal(extractMuseResponsesDeltaText({ type: 'response.output_text.delta', delta: 'x' }), 'x');
 });

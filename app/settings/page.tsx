@@ -498,7 +498,7 @@ export default function SettingsPage() {
                   </button>
                 </div>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Real-time web lookups via the provider&apos;s search tool with cited sources. Applies to Muse Spark (`web_search`) and Gemini (`googleSearch`) compilations.
+                  Real-time web lookups with cited sources. Muse Spark grounds via the Responses API (`web_search`) and Gemini via (`googleSearch`). Ungrounded Muse requests stay on Chat Completions.
                 </p>
                 <div className="space-y-2">
                   <label className="text-xs text-slate-300 block">Search Context Size</label>

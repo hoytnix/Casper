@@ -581,8 +581,16 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               if (!line.startsWith('data: ')) continue;
               const jsonStr = line.slice(6);
 
+              let evt: any;
               try {
-                const evt = JSON.parse(jsonStr);
+                evt = JSON.parse(jsonStr);
+              } catch (parseErr) {
+                console.warn('Could not parse SSE event:', parseErr);
+                continue;
+              }
+              {
+                // Server-sent events below; server `error` throws propagate
+                // instead of being misreported as parse failures.
 
                 if (evt.type === 'agent_round') {
                   setProgress((prev) => ({
@@ -769,8 +777,6 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                   console.error('Compile stream server error:', serverError, serverDetails);
                   throw new Error(`${serverError}${serverDetails}`);
                 }
-              } catch (parseErr) {
-                console.warn('Could not parse SSE event:', parseErr);
               }
             }
           }

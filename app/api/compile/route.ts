@@ -19,8 +19,12 @@ import {
 import {
   buildMuseEndpoint,
   buildMuseRequestBody,
+  buildMuseResponsesEndpoint,
+  buildMuseResponsesRequestBody,
   createMuseStreamParser,
+  flushMuseResponsesStreamParser,
   flushMuseStreamParser,
+  pushMuseResponsesSseText,
   pushMuseSseText,
 } from '@/lib/muse-stream';
 import {
@@ -148,9 +152,9 @@ const DEFAULT_CASCADING_MODELS = [
 ] as const;
 
 // Muse API transport (edge-safe: standard fetch + ReadableStream only, no Node APIs).
-// Base URL is operator-configurable; the default endpoint is unconfirmed and may need
-// to be overridden via MUSE_API_BASE_URL if Muse publishes a different chat-completions host.
-const MUSE_API_BASE_URL = (process.env.MUSE_API_BASE_URL || 'https://api.muse.ai/v1').replace(/\/+$/, '');
+// Base URL is operator-configurable via MUSE_API_BASE_URL; the documented
+// Meta base (api.meta.ai/v1) serves /chat/completions, /responses, /messages.
+const MUSE_API_BASE_URL = (process.env.MUSE_API_BASE_URL || 'https://api.meta.ai/v1').replace(/\/+$/, '');
 
 function isMuseModelTag(tag: unknown): boolean {
   const norm = String(tag || '').toLowerCase().trim();
@@ -181,10 +185,14 @@ async function* streamMuseCompletionChunks(args: {
     (timer as unknown as { unref: () => void }).unref();
   }
   try {
-    // The endpoint echoes in failures (no secret travels in the URL —
-    // the key stays in the Bearer header) so a wrong MUSE_API_BASE_URL
-    // is diagnosable from the error alone.
-    const endpoint = buildMuseEndpoint(MUSE_API_BASE_URL);
+    // Grounded Muse requests use the Responses endpoint (Meta's only surface
+    // with web_search); ungrounded requests stay on Chat Completions, which
+    // rejects search tools. The endpoint echoes in failures (no secret
+    // travels in the URL) so a wrong MUSE_API_BASE_URL stays diagnosable.
+    const grounded = args.searchGrounding === true;
+    const endpoint = grounded
+      ? buildMuseResponsesEndpoint(MUSE_API_BASE_URL)
+      : buildMuseEndpoint(MUSE_API_BASE_URL);
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -192,20 +200,33 @@ async function* streamMuseCompletionChunks(args: {
         Authorization: `Bearer ${args.apiKey}`,
       },
       body: JSON.stringify(
-        buildMuseRequestBody({
-          model: args.model,
-          systemInstruction: args.systemInstruction,
-          prompt: args.prompt,
-          historyMessages: args.historyMessages,
-          temperature: args.temperature,
-          searchGrounding: args.searchGrounding,
-          searchContextSize: args.searchContextSize,
-          // Muse Spark carries the full five-level scale (xhigh/max included).
-          thinkingPayload: buildMuseThinkingPayload(
-            normalizeThinkingLevel(args.thinkingLevel),
-            normalizeThinkingSummaries(args.thinkingSummaries)
-          ),
-        })
+        grounded
+          ? buildMuseResponsesRequestBody({
+              model: args.model,
+              systemInstruction: args.systemInstruction,
+              prompt: args.prompt,
+              historyMessages: args.historyMessages,
+              temperature: args.temperature,
+              searchGrounding: true,
+              searchContextSize: args.searchContextSize,
+              // The Responses builder maps max onto the documented xhigh ceiling.
+              thinkingPayload: buildMuseThinkingPayload(
+                normalizeThinkingLevel(args.thinkingLevel),
+                normalizeThinkingSummaries(args.thinkingSummaries)
+              ),
+            })
+          : buildMuseRequestBody({
+              model: args.model,
+              systemInstruction: args.systemInstruction,
+              prompt: args.prompt,
+              historyMessages: args.historyMessages,
+              temperature: args.temperature,
+              // Muse Spark carries the full five-level scale (xhigh/max included).
+              thinkingPayload: buildMuseThinkingPayload(
+                normalizeThinkingLevel(args.thinkingLevel),
+                normalizeThinkingSummaries(args.thinkingSummaries)
+              ),
+            })
       ),
       signal: controller.signal,
     });
@@ -217,15 +238,17 @@ async function* streamMuseCompletionChunks(args: {
     const decoder = new TextDecoder();
     const parser = createMuseStreamParser();
     const emit = (text: string) => ({ candidates: [{ content: { parts: [{ text }] } }] });
+    const pushChunk = grounded ? pushMuseResponsesSseText : pushMuseSseText;
+    const flushParser = grounded ? flushMuseResponsesStreamParser : flushMuseStreamParser;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      for (const text of pushMuseSseText(parser, decoder.decode(value, { stream: true }))) {
+      for (const text of pushChunk(parser, decoder.decode(value, { stream: true }))) {
         yield emit(text);
       }
       if (parser.finished) return;
     }
-    for (const text of flushMuseStreamParser(parser)) {
+    for (const text of flushParser(parser)) {
       yield emit(text);
     }
   } finally {
