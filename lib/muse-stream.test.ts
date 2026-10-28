@@ -142,6 +142,18 @@ test('request body pins an explicit output cap so completions are never single-t
   );
 });
 
+test('request body requests stream usage telemetry for cache-read capture', () => {
+  // Without `stream_options.include_usage` the provider omits `usage`
+  // chunks and cache-read capture degrades to honest zero.
+  const body = buildMuseRequestBody({
+    model: 'muse-spark-1.3',
+    systemInstruction: 'sys',
+    prompt: 'user-goal',
+    temperature: 0.2,
+  });
+  assert.deepEqual(body['stream_options'], { include_usage: true });
+});
+
 test('request body never emits web_search tools (Chat Completions 400 regression)', () => {
   // Meta's Chat Completions endpoint rejects `tools[0]` with
   // "`tools[0]` did not match any supported type" — search grounding is

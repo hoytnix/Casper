@@ -273,6 +273,10 @@ export function buildMuseRequestBody(input: MuseRequestInput): Record<string, un
   return {
     model: input.model,
     stream: true,
+    // Usage telemetry rides the stream only when requested: without
+    // `stream_options.include_usage` the provider omits `usage` chunks and
+    // cache-read capture degrades to honest zero.
+    stream_options: { include_usage: true },
     temperature: input.temperature,
     max_tokens: MUSE_MAX_OUTPUT_TOKENS,
     ...safeThinking,
