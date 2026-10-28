@@ -7,6 +7,9 @@ import {
   formatCompiledPrompt,
   extractGeminiCachedTokens,
   extractSuggestedRefactors,
+  isDuplicateDelta,
+  dedupeConsecutiveAssistantMessages,
+  replaceAssistantContent,
 } from './utils.ts';
 
 test('resolveModelPricing correctly identifies Gemini 4 Argon', () => {
@@ -165,4 +168,37 @@ test('calculateModelCost fourth arg prices measured cache reads at the cached ra
   assert.equal(cost.cachedInputTokens, 4000);
   // 6000 fresh @ $0.75/M + 4000 cached @ $0.075/M.
   assert.ok(Math.abs(cost.inputCostUsd - (6000 / 1_000_000 * 0.75 + 4000 / 1_000_000 * 0.075)) < 1e-9);
+});
+
+test('isDuplicateDelta swallows empties and resends, passes fresh text', () => {
+  assert.equal(isDuplicateDelta('hello', ''), true);
+  assert.equal(isDuplicateDelta('', 'hello'), false);
+  assert.equal(isDuplicateDelta('hello world', 'world'), true);
+  assert.equal(isDuplicateDelta('abc', 'abc'), true);
+  assert.equal(isDuplicateDelta('hello', 'world'), false);
+  assert.equal(isDuplicateDelta('ab', 'abc'), false);
+});
+
+test('dedupeConsecutiveAssistantMessages drops fast identical assistant repeats', () => {
+  const base = { role: 'assistant', content: 'same prompt', timestamp: 1000 } as const;
+  const msgs = [
+    { id: 'u1', role: 'user', content: 'go', timestamp: 900 },
+    { id: 'a1', ...base },
+    { id: 'a2', ...base, timestamp: 3000 },
+    { id: 'a3', ...base, content: 'different', timestamp: 3200 },
+    { id: 'a4', ...base, content: 'different', timestamp: 40000 },
+  ] as any;
+  const out = dedupeConsecutiveAssistantMessages(msgs);
+  assert.deepEqual(out.map((m: any) => m.id), ['u1', 'a1', 'a3', 'a4']);
+});
+
+test('replaceAssistantContent swaps one message by id without touching others', () => {
+  const msgs = [
+    { id: 'a', role: 'assistant', content: 'old', timestamp: 1 },
+    { id: 'b', role: 'user', content: 'keep', timestamp: 2 },
+  ] as any;
+  const out = replaceAssistantContent(msgs, 'a', 'new');
+  assert.equal(out[0].content, 'new');
+  assert.equal(out[1].content, 'keep');
+  assert.equal(msgs[0].content, 'old');
 });

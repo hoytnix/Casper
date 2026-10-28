@@ -1,6 +1,16 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Eliminated double-rendered assistant responses with single-compile ownership:
+- **Vectors traced**: double-submit race CONFIRMED (stale-closure `messages`, async `isBusy`, no abort); stale-closure finalization CONFIRMED (`saveMessages` from pre-stream array, state/storage divergence); stream double-append NOT FOUND (functional appends, once-only firstChunk, emit-once flush) — guards added as insurance only.
+- **Types (`/types/index.ts`)**: `compileId?` on `snapshotMeta` + `IngestionProgress`.
+- **Helpers (`/lib/utils.ts`)**: `isDuplicateDelta` (equal-length resends also swallowed — sketch omitted the `<=`), `dedupeConsecutiveAssistantMessages` (5s window), `replaceAssistantContent` pure replacer; 3 tests.
+- **Route (`/app/api/compile/route.ts`)**: client `compileId` accepted (randomUUID fallback), echoed on ALL events via `sendEvent` wrapper (single edit covers present + future sites); `firstChunkConsumed` + null-out; dup-swallow in `handlePromptText` (pure swallow — no accumulation, length math intact).
+- **Store (`/hooks/useRepoStore.ts`)**: dedupe on load (hydrate) + save (state and storage).
+- **Workspace (`/components/RepoWorkspace.tsx`)**: `activeCompileIdRef`/`readerRef`/`assistantIdRef`; abort + stale-placeholder removal on handoff; stale-event ignore by id; dup-guarded functional `prompt_chunk`; functional `done` finalization (exact array to state AND storage); silent stale catch with ref clearing.
+- **Compiler (`/components/ChatCompiler.tsx`)**: synchronous `submitLockRef` + `isSubmitting` button state, 300ms release; `stopPropagation` on Cmd/Ctrl+Enter.
+- **Deviations**: Step 3 parser change was a no-op (flush already emit-once) — added byte-split pinning test instead; purge list's icon removals rejected (Compass/AlertTriangle/GitBranch/RefreshCw all rendered); no duplicate thinkingLevel normalization existed; finance notes left without compileId (not needed).
+- Verified: 96/96 `node:test` (4 new), `tsc` clean (one narrowing fix in error-path closure), `eslint` 0 errors, `pnpm build` green.
 Captured real cache-read telemetry so Cached Input is measured, not 0 by default:
 - **Route (`/app/api/compile/route.ts`)**: Gemini `usageMetadata.cachedContentTokenCount` accumulated (max) in `processChunkValue`; Muse parser capture surfaced via `usageCapture` out-param (filled in generator `finally`, parser hoisted above `try` so early fetch failures can't mask errors); measured count passed as 4th arg to `calculateModelCost` in the `done` event (existing clamp + discounted-rate semantics unchanged).
 - **Muse transport (`/lib/muse-stream.ts`)**: `MuseStreamParser.cachedInputTokens` + `extractMuseUsageCachedTokens()` (OpenAI-compatible `prompt_tokens_details.cached_tokens` / `input_tokens_details.cached_tokens`; Anthropic `cache_read_input_tokens` deliberately unread — wrong transport shape); wired into chat frames, Responses terminal events, and both single-JSON flush fallbacks. No `stream_options` body change (400 risk on the undocumented Meta API — capture stays opportunistic).

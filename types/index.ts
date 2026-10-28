@@ -192,6 +192,7 @@ export interface ChatMessage {
     suggestedRefactors?: string[];
     imageCount?: number;
     imageBytes?: number;
+    compileId?: string;
   };
 }
 
@@ -248,6 +249,7 @@ export interface IngestionProgress {
   outputTokens?: number;
   progressPercent?: number;
   activeImageCount?: number;
+  compileId?: string;
 }
 
 export interface NextJsFileCard {

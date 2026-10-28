@@ -128,15 +128,28 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, progress]);
 
+  // Synchronous submit lock: `isBusy` arrives via parent re-render
+  // (async), so rapid double-click / double-Enter would otherwise fire
+  // onSendMessage twice on the same stale closure. The ref guards the
+  // event tick; the state mirrors it for the disabled button render.
+  const submitLockRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isBusy) return;
+    if (submitLockRef.current || isBusy) return;
     if (!inputText.trim() && attachments.length === 0) return;
+    submitLockRef.current = true;
+    setIsSubmitting(true);
     onSendMessage(inputText.trim(), attachments.length > 0 ? attachments : undefined);
     setInputText('');
     setAttachments([]);
     setImageError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    setTimeout(() => {
+      submitLockRef.current = false;
+      setIsSubmitting(false);
+    }, 300);
   };
 
   const ingestImageFiles = async (files: File[]) => {
@@ -761,6 +774,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
+                  e.stopPropagation();
                   handleSubmit(e);
                 }
               }}
@@ -805,7 +819,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
 
                 <button
                   type="submit"
-                  disabled={isBusy || (!inputText.trim() && attachments.length === 0)}
+                  disabled={isBusy || isSubmitting || (!inputText.trim() && attachments.length === 0)}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold text-xs shadow-sm hover:shadow-indigo-500/20 transition active:scale-95"
                 >
                   <Send className="w-3.5 h-3.5" />

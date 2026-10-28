@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { ModelPricingTier } from "@/types"
+import type { ChatMessage, ModelPricingTier } from "@/types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -264,6 +264,57 @@ export function extractGeminiCachedTokens(chunk: unknown): number {
   const cached = (usage as Record<string, unknown>)['cachedContentTokenCount'];
   if (typeof cached !== 'number' || !Number.isFinite(cached) || cached <= 0) return 0;
   return Math.floor(cached);
+}
+
+/**
+ * Duplicate-delta guard for streamed text. Returns true when `incoming`
+ * must NOT be appended to `accumulated`: empty payloads, or an incoming
+ * slice the accumulation already ends with (provider resend). The length
+ * check keeps the equal-length case covered too — identical strings can
+ * only be a full resend. Deterministic and side-effect free.
+ */
+export function isDuplicateDelta(accumulated: string, incoming: string): boolean {
+  if (!incoming) return true;
+  if (accumulated.length === 0) return false;
+  return incoming.length <= accumulated.length && accumulated.endsWith(incoming);
+}
+
+/**
+ * Drops a later assistant message when it duplicates the previous
+ * assistant message's content within a short window — the persisted
+ * footprint of a double-fired compile. Text is never altered, only
+ * exact consecutive duplicates are removed.
+ */
+export function dedupeConsecutiveAssistantMessages(messages: ChatMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  let lastAssistant: ChatMessage | null = null;
+  for (const m of messages) {
+    if (m.role === 'assistant') {
+      if (
+        lastAssistant &&
+        m.content === lastAssistant.content &&
+        Math.abs(m.timestamp - lastAssistant.timestamp) <= 5000
+      ) {
+        continue;
+      }
+      lastAssistant = m;
+    }
+    out.push(m);
+  }
+  return out;
+}
+
+/**
+ * Pure content replacer for one message by id. Used for functional
+ * `setMessages` finalization so late stream events always operate on
+ * latest state instead of a stale render closure.
+ */
+export function replaceAssistantContent(
+  messages: ChatMessage[],
+  id: string,
+  content: string
+): ChatMessage[] {
+  return messages.map((m) => (m.id === id ? { ...m, content } : m));
 }
 
 /**

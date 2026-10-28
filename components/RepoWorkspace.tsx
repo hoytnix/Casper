@@ -46,7 +46,7 @@ import {
 } from '@/lib/github';
 import { warmUpLocalContextRouter, routeNextJsContext } from '@/lib/local-context-router';
 import { detectRepositoryFramework, frameworkBadgeLabel } from '@/lib/framework-detector';
-import { formatCostUsd, calculateModelCost, resolveModelPricing, extractSuggestedRefactors } from '@/lib/utils';
+import { formatCostUsd, calculateModelCost, resolveModelPricing, extractSuggestedRefactors, isDuplicateDelta, replaceAssistantContent } from '@/lib/utils';
 import { normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
 import { normalizeSearchContextSize } from '@/lib/search-grounding';
 
@@ -136,6 +136,12 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
 
   const snapshotRef = useRef(snapshot);
   const saveSnapshotRef = useRef(saveSnapshot);
+  // Single-owner streaming: only the compile holding activeCompileIdRef
+  // may write messages/progress. A new submission aborts the prior reader
+  // and takes ownership; stale events are ignored by id, never by timing.
+  const activeCompileIdRef = useRef<string | null>(null);
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const assistantIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -275,6 +281,30 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
       });
       return;
     }
+    // Single-owner handoff: abort any in-flight stream synchronously, then
+    // take ownership. Ref-based (never closure state) so rapid double
+    // submits cannot both believe they own the conversation.
+    if (activeCompileIdRef.current !== null) {
+      try {
+        await readerRef.current?.cancel();
+      } catch {
+        // Reader already closed/locked — the stale loop exits on its own.
+      }
+      // Drop the superseded placeholder (by exact id) so an aborted
+      // compile never leaves an empty bubble behind. Its user echo stays.
+      const staleAssistantId = assistantIdRef.current;
+      if (staleAssistantId) {
+        setMessages((prev) => prev.filter((m) => m.id !== staleAssistantId));
+      }
+      activeCompileIdRef.current = null;
+      readerRef.current = null;
+      assistantIdRef.current = null;
+    }
+    const compileId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    activeCompileIdRef.current = compileId;
     const validImages = imageCheck.data;
     const imageTokens = estimateImagesTokens(validImages);
     const imageBytesTotal = sumImageBytes(validImages);
@@ -295,6 +325,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
       setProgress({
         step: 'fetching_tree',
         message: 'Fetching latest commit tree skeleton from GitHub...',
+        compileId,
       });
 
       const { sha: commitSha, tree } = await fetchRepoTree(
@@ -481,8 +512,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
         const requestThinkingLevel = normalizeThinkingLevel(settings.thinkingLevel);
         const requestThinkingSummaries = normalizeThinkingSummaries(settings.thinkingSummaries);
 
-        const assistantMsgId = `assistant-${Date.now()}`;
+        const assistantMsgId = `assistant-${Date.now()}-${compileId.slice(0, 8)}`;
         currentAssistantMsgId = assistantMsgId;
+        assistantIdRef.current = assistantMsgId;
         const assistantMsg: ChatMessage = {
           id: assistantMsgId,
           role: 'assistant',
@@ -501,17 +533,17 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             toolTraces,
             explorationTrail: [explorationStepRecord],
             thinkingLevel: requestThinkingLevel,
+            compileId,
             ...(validImages.length > 0
               ? { imageCount: validImages.length, imageBytes: imageBytesTotal }
               : {}),
           },
         };
 
-        const messagesWithAssistantPlaceholder = [
-          ...updatedMessagesWithUser,
-          assistantMsg,
-        ];
-        setMessages(messagesWithAssistantPlaceholder);
+        // Functional insert: the placeholder lands on latest state, so a
+        // second submit's user echo can never be clobbered by this write.
+        // (updatedMessagesWithUser above is still used for the user-echo save.)
+        setMessages((prev) => [...prev, assistantMsg]);
 
         // ==========================================
         // SERVER-SIDE SYNTHESIS & STREAM PROMPT
@@ -537,6 +569,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             mode,
+            compileId,
             owner: repo.owner,
             repo: repo.repo,
             branch: repo.branch,
@@ -585,6 +618,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           }
 
           const reader = response.body.getReader();
+          readerRef.current = reader;
           const decoder = new TextDecoder();
           let buffer = '';
           let accumulatedContent = '';
@@ -619,6 +653,11 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                 console.warn('Could not parse SSE event:', parseErr);
                 continue;
               }
+              // Ownership filter: a superseded compile's late events are
+              // dropped by id. An event without compileId (stale server)
+              // is honored only while this compile still owns the stream.
+              if (evt.compileId && evt.compileId !== compileId) continue;
+              if (!evt.compileId && activeCompileIdRef.current !== compileId) continue;
               {
                 // Server-sent events below; server `error` throws propagate
                 // instead of being misreported as parse failures.
@@ -691,7 +730,14 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                     message: 'Model reasoning complete. Streaming compiled prompt...',
                   }));
                 } else if (evt.type === 'prompt_chunk') {
-                  accumulatedContent += evt.text || '';
+                  const incomingText = evt.text || '';
+                  // replaceAssistantContent pattern: skip the whole update
+                  // when the delta is one we already hold (resend), so
+                  // content length grows strictly monotonically.
+                  if (isDuplicateDelta(accumulatedContent, incomingText)) {
+                    continue;
+                  }
+                  accumulatedContent += incomingText;
                   const cleanDisplayPrompt = extractSuggestedRefactors(accumulatedContent).cleanPrompt;
                   const currentOutputTokens = Math.max(1, Math.ceil(accumulatedContent.length / 4));
                   const dynamicCost = calculateModelCost(
@@ -863,38 +909,50 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           saveSnapshot(repo.id, agentSnapshot);
           onUpdateRepo(repo.id, { lastSyncedAt: Date.now(), detectedFramework: snapshotFramework });
 
-          const finalMessages: ChatMessage[] = messagesWithAssistantPlaceholder.map((m) =>
-            m.id === assistantMsgId
-              ? {
-                  ...m,
-                  content: finalCleanContent,
-                  thinkingContent: accumulatedThinking || undefined,
-                  thinkingLevel: serverThinkingLevel,
-                  costDetails: calculatedCost,
-                  suggestedRefactors: m.suggestedRefactors || (finalParsedRefactors.length > 0 ? finalParsedRefactors : undefined),
-                  snapshotMeta: {
-                    ...m.snapshotMeta!,
-                    filesCount: downloadedInvestigated.length,
-                    tokensCount: serverInputTokens,
-                    inputTokensCount: serverInputTokens,
-                    outputTokensCount: finalTokensCount,
-                    modelUsed,
-                    fallbackPass,
-                    mode: 'agentic' as const,
-                    explorationTrail: [explorationStepRecord],
+          // Functional finalization: build from latest state, not the
+          // stale closure captured before streaming. The exact array
+          // written to state is what gets persisted — state and storage
+          // can never diverge. (Same in-updater-save pattern as the
+          // error path below, which React runs at render time.)
+          setMessages((prev) => {
+            const finalMessages: ChatMessage[] = prev.map((m) =>
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    content: finalCleanContent,
                     thinkingContent: accumulatedThinking || undefined,
                     thinkingLevel: serverThinkingLevel,
                     costDetails: calculatedCost,
-                    inputTokens: calculatedCost.inputTokens,
-                    outputTokens: calculatedCost.outputTokens,
-                    totalCostUsd: calculatedCost.totalCostUsd,
-                    modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
                     suggestedRefactors: m.suggestedRefactors || (finalParsedRefactors.length > 0 ? finalParsedRefactors : undefined),
-                  },
-                }
-              : m
-          );
-          saveMessages(repo.id, finalMessages);
+                    snapshotMeta: {
+                      ...m.snapshotMeta!,
+                      filesCount: downloadedInvestigated.length,
+                      tokensCount: serverInputTokens,
+                      inputTokensCount: serverInputTokens,
+                      outputTokensCount: finalTokensCount,
+                      modelUsed,
+                      fallbackPass,
+                      mode: 'agentic' as const,
+                      explorationTrail: [explorationStepRecord],
+                      thinkingContent: accumulatedThinking || undefined,
+                      thinkingLevel: serverThinkingLevel,
+                      costDetails: calculatedCost,
+                      inputTokens: calculatedCost.inputTokens,
+                      outputTokens: calculatedCost.outputTokens,
+                      totalCostUsd: calculatedCost.totalCostUsd,
+                      modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
+                      suggestedRefactors: m.suggestedRefactors || (finalParsedRefactors.length > 0 ? finalParsedRefactors : undefined),
+                    },
+                  }
+                : m
+            );
+            saveMessages(repo.id, finalMessages);
+            return finalMessages;
+          });
+          // Ownership released only after the final write above.
+          activeCompileIdRef.current = null;
+          readerRef.current = null;
+          assistantIdRef.current = null;
 
           // Automatically log expense into token cost records ledger / finance DB
           try {
@@ -963,20 +1021,21 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           });
 
       } catch (err: unknown) {
+      // Superseded compiles (aborted by a newer submission, e.g. an
+      // AbortError from reader.cancel()) exit silently: the new owner
+      // already owns messages, progress, and refs.
+      if (activeCompileIdRef.current !== compileId) {
+        return;
+      }
       console.error('Compilation failed:', err);
       const errMsg = err instanceof Error ? err.message : String(err);
-      
+
       // Update assistant message with a clean markdown notice so the placeholder is not left blank or corrupted
       if (currentAssistantMsgId) {
+        const failedAssistantId: string = currentAssistantMsgId;
+        const errorNotice = `> ⚠️ **Compilation Error:** ${errMsg}\n\nPlease click **Recompile Prompt** or toggle to **Agentic Loop** mode for fast selective file exploration.`;
         setMessages((prev) => {
-          const updated = prev.map((m) =>
-            m.id === currentAssistantMsgId
-              ? {
-                  ...m,
-                  content: `> ⚠️ **Compilation Error:** ${errMsg}\n\nPlease click **Recompile Prompt** or toggle to **Agentic Loop** mode for fast selective file exploration.`,
-                }
-              : m
-          );
+          const updated = replaceAssistantContent(prev, failedAssistantId, errorNotice);
           saveMessages(repo.id, updated);
           return updated;
         });
@@ -987,6 +1046,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
         message: 'Compilation failed',
         error: errMsg,
       });
+      activeCompileIdRef.current = null;
+      readerRef.current = null;
+      assistantIdRef.current = null;
     }
   };
 

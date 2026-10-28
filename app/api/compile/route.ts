@@ -13,7 +13,7 @@ import {
 } from '@/lib/image-attachments';
 import { normalizeSearchContextSize } from '@/lib/search-grounding';
 import { fetchFilesOnDemand, normalizeRepoPath } from '@/lib/github';
-import { calculateModelCost, extractGeminiCachedTokens, extractSuggestedRefactors } from '@/lib/utils';
+import { calculateModelCost, extractGeminiCachedTokens, extractSuggestedRefactors, isDuplicateDelta } from '@/lib/utils';
 import { detectRepositoryFramework } from '@/lib/framework-detector';
 import {
   normalizeConversationHistory,
@@ -335,6 +335,7 @@ export async function POST(req: NextRequest) {
       investigatedFiles: clientInvestigatedFiles, // Pre-routed files from client
       conversationHistory: rawConversationHistory, // Prior ChatMessage turns for multi-turn caching
       images: rawImages, // Optional screenshot attachments (base64 data URLs)
+      compileId: rawCompileId, // Client-owned single-emission key (see below)
       models: customModels,
       requestTimeout = 60,
       searchGrounding: rawSearchGrounding,
@@ -398,6 +399,17 @@ export async function POST(req: NextRequest) {
     const geminiImageParts = toGeminiInlineParts(validImages);
     const museImageParts = toMuseImageParts(validImages);
 
+    // Single-emission ownership: the client generates one compileId per
+    // submission; the server echoes it on every SSE event so overlapping
+    // streams are distinguishable. Absent/invalid input falls back to a
+    // server-generated id (never empty, never reused across requests).
+    const compileId =
+      typeof rawCompileId === 'string' && rawCompileId.length > 0 && rawCompileId.length <= 64
+        ? rawCompileId
+        : typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     const apiKey = customApiKey?.trim() || process.env.GEMINI_API_KEY;
     // Handle model initialization branching for muse-spark-1.3 & muse-spark-1.3-contributor:
     // per-request Settings key wins, shared MUSE_API_KEY env is the server fallback.
@@ -440,8 +452,13 @@ export async function POST(req: NextRequest) {
     if (owner && repo && treeListing) {
       const readable = new ReadableStream({
         async start(controller) {
-          const sendEvent = (eventData: Record<string, unknown>) => {
+          const sendRawEvent = (eventData: Record<string, unknown>) => {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(eventData)}\n\n`));
+          };
+          // compileId rides on every event (present and future) so the
+          // client can ignore stale streams from superseded compiles.
+          const sendEvent = (eventData: Record<string, unknown>) => {
+            sendRawEvent({ compileId, ...eventData });
           };
 
           try {
@@ -907,6 +924,12 @@ ${treeListing}
             let refactorDelimiterSeen = false;
 
             const handlePromptText = (incomingText: string) => {
+              // Delta-only emission: a resent slice is swallowed whole —
+              // neither accumulated nor emitted — so downstream length
+              // math and the client stay exactly as if it never arrived.
+              if (isDuplicateDelta(accumulatedPromptText, incomingText)) {
+                return;
+              }
               accumulatedPromptText += incomingText;
               if (thinkingStarted && !thinkingEnded) {
                 thinkingEnded = true;
@@ -972,8 +995,13 @@ ${treeListing}
               }
             };
 
-            if (streamResponse.firstChunk) {
+            // Consume-once: null out after processing so a repeated
+            // reference from the iterator can never double-emit.
+            let firstChunkConsumed = false;
+            if (streamResponse.firstChunk && !firstChunkConsumed) {
+              firstChunkConsumed = true;
               processChunkValue(streamResponse.firstChunk);
+              streamResponse.firstChunk = null;
             }
 
             while (true) {

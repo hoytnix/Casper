@@ -300,6 +300,29 @@ test('responses completed event records nested usage cached tokens', () => {
   assert.equal(parser.cachedInputTokens, 250);
 });
 
+test('byte-split reads emit exactly once, matching whole reads', () => {
+  const payload =
+    `data: ${JSON.stringify({ choices: [{ delta: { content: 'Hello' } }] })}\r\n\r\n` +
+    `data: ${JSON.stringify({ choices: [{ delta: { content: ' world' } }] })}\r\n\r\n` +
+    `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens_details: { cached_tokens: 77 } } })}`;
+  const drive = (reads: string[]) => {
+    const parser = createMuseStreamParser();
+    const out: string[] = [];
+    for (const read of reads) {
+      out.push(...pushMuseSseText(parser, read));
+      if (parser.finished) break;
+    }
+    if (!parser.finished) out.push(...flushMuseStreamParser(parser));
+    return { text: out.join(''), chunks: parser.chunksProduced, cached: parser.cachedInputTokens };
+  };
+  const whole = drive([payload]);
+  const byteSplit: string[] = [];
+  for (let i = 0; i < payload.length; i += 7) byteSplit.push(payload.slice(i, i + 7));
+  const split = drive(byteSplit);
+  assert.equal(whole.text, 'Hello world');
+  assert.deepEqual(split, whole);
+});
+
 test('extractMuseUsageCachedTokens stays zero without usage telemetry', () => {
   assert.equal(extractMuseUsageCachedTokens({ choices: [{ delta: { content: 'x' } }] }), 0);
   assert.equal(extractMuseUsageCachedTokens(null), 0);

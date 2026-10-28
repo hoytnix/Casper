@@ -6,7 +6,7 @@ import { suggestedDirectiveListSchema } from '@/lib/suggestion-schemas';
 import { imageAttachmentSchema } from '@/lib/image-attachments';
 import { normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
 import { normalizeSearchContextSize } from '@/lib/search-grounding';
-import { formatCompiledPrompt, extractSuggestedRefactors } from '@/lib/utils';
+import { formatCompiledPrompt, extractSuggestedRefactors, dedupeConsecutiveAssistantMessages } from '@/lib/utils';
 import {
   saveSnapshotToDB,
   loadAllSnapshotsFromDB,
@@ -470,8 +470,11 @@ export function useRepoStore() {
             ...sanitizeMessageImages(m),
           };
         });
-        setChatHistory((prev) => ({ ...prev, [repoId]: sanitized }));
-        return sanitized;
+        // Backstop: a double-fired compile persists twin assistant bubbles;
+        // collapse them on hydrate so reloads never show doubles.
+        const deduped = dedupeConsecutiveAssistantMessages(sanitized);
+        setChatHistory((prev) => ({ ...prev, [repoId]: deduped }));
+        return deduped;
       }
     } catch (e) {
       console.warn('Failed to load chat history for repo:', e);
@@ -498,12 +501,14 @@ export function useRepoStore() {
       }
       return m;
     });
-    setChatHistory((prev) => ({ ...prev, [repoId]: formatted }));
+    // Collapse twin assistant bubbles before state or storage sees them.
+    const deduped = dedupeConsecutiveAssistantMessages(formatted);
+    setChatHistory((prev) => ({ ...prev, [repoId]: deduped }));
     // Quota-guarded persist: image blobs can exceed localStorage limits.
     // Strip oldest message images (text always preserved) and retry until
     // the payload fits or no images remain. Never throws.
     try {
-      let persistable = formatted;
+      let persistable = deduped;
       while (chatImageBytes(persistable) > CHAT_IMAGE_BYTES_BUDGET) {
         const stripped = stripOldestMessageImages(persistable);
         if (stripped === persistable) break;
