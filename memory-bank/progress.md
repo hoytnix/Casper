@@ -221,3 +221,4 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Client/UI (`/hooks/useCompileStream.ts`, `/components/ContextInspector.tsx`, `/components/StepLoader.tsx`): estimate pre-stream, measured post-stream, single-final-array snapshot/ledger persistence, amber cached row only when > 0, "Not measured yet" zero-state.
   - Official pricing: contributor $0.002/M, Muse $0.15/M, Argon $0.10/M ($0.20/M post-Nov-30), 3.6 Flash $0.75/$3.75/$0.075; settings display + tests updated.
   - Verified: 77/77 focused `node:test` (10 new), `tsc` clean, `eslint` 0 errors, `pnpm build` green.
+  - Follow-up `7849f30`: chat body sends `stream_options: { include_usage: true }` (`/lib/muse-stream.ts` + regression test) so usage chunks arrive; 78/78 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green.
