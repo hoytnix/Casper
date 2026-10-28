@@ -83,7 +83,7 @@ export const RepoGrid: React.FC<RepoGridProps> = ({
               <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/[0.06] text-xs">
                 <div className="flex items-center gap-2">
                   <Cpu className="w-4 h-4 text-sky-400" />
-                  <span className="font-bold text-white tracking-wide">Next.js Cartography Engine</span>
+                  <span className="font-bold text-white tracking-wide">App Cartography Engine</span>
                 </div>
                 <span className="font-mono text-[11px] text-emerald-400 tabular-nums">Live Inspection</span>
               </div>
@@ -183,10 +183,10 @@ export const RepoGrid: React.FC<RepoGridProps> = ({
           </div>
           <div>
             <h4 className="text-sm font-semibold text-slate-200 group-hover:text-white">
-              Connect Next.js Repository
+              Connect Repository
             </h4>
             <p className="text-xs text-slate-500 mt-1 max-w-[240px]">
-              Provide any public GitHub Next.js repo or private repository with PAT.
+              Provide any public GitHub repo (Next.js, Hono, or Vite) or private repository with PAT.
             </p>
           </div>
         </button>

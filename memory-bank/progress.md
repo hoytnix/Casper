@@ -200,3 +200,4 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Probed mount costs in node: graph 34ms, sanitize 19ms, Markdown ~30–100ms/bubble — header handlers trivial; root cause was Arctic re-embed churn + Nano session recreation on every warmup.
   - Fingerprint-keyed embed skip + macrotask yield every 5 files (`/lib/routers/arctic-embed-router.ts`); session reuse on unchanged prompt (`/lib/routers/gemini-nano-router.ts`).
   - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green. Field INP re-measurement needs a real browser run.
+- [x] **Homepage Rebrand to App Cartography Engine**: schematic header label + add-repo tile copy in `/components/RepoGrid.tsx`; logic byte-identical. Verified: `tsc` clean, `eslint` 0 errors, `pnpm build` green.
