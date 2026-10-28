@@ -1,4 +1,4 @@
-import { SourceFile } from '@/types';
+import type { SourceFile } from '@/types';
 
 export interface CodeSymbol {
   name: string;
@@ -20,6 +20,7 @@ export interface NextJsCodeGraph {
     routeHandlers: { path: string; methods: string[]; symbols: string[] }[];
     pages: { path: string; components: string[] }[];
   };
+  spaEntries: { htmlPath: string; entryPath: string }[];
 }
 
 export function buildNextJsCodeGraph(files: SourceFile[]): NextJsCodeGraph {
@@ -30,12 +31,33 @@ export function buildNextJsCodeGraph(files: SourceFile[]): NextJsCodeGraph {
   
   const routeHandlersMap: Map<string, { methods: string[]; symbols: string[] }> = new Map();
   const pagesMap: Map<string, string[]> = new Map();
+  const spaEntries: { htmlPath: string; entryPath: string }[] = [];
 
   for (const file of files) {
     const lines = file.content.split('\n');
     const fileSymbols: string[] = [];
+    const lowerPath = file.path.toLowerCase();
     const isRouteHandler = file.path.includes('route.ts') || file.path.includes('route.js');
     const isPage = file.path.includes('page.tsx') || file.path.includes('page.jsx');
+    // Vite SPA roots (src/App.*) act as the render-tree root the same way
+    // Next.js pages do; index.html mounts them via <script src="..."> injection.
+    const isViteSpaRoot = lowerPath.includes('src/app.');
+    const isViteHtmlEntry = lowerPath.endsWith('.html');
+
+    if (isViteHtmlEntry) {
+      const scriptSrcs = file.content.matchAll(
+        /<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi
+      );
+      for (const srcMatch of scriptSrcs) {
+        const rawSrc = (srcMatch[1] || '').split(/[?#]/)[0].trim();
+        if (!rawSrc || rawSrc.startsWith('http') || rawSrc.startsWith('//')) continue;
+        const normalized = rawSrc.replace(/^\//, '');
+        const target = files.find(
+          (f) => f.path === normalized || f.path.endsWith('/' + normalized)
+        );
+        if (target) spaEntries.push({ htmlPath: file.path, entryPath: target.path });
+      }
+    }
     const hasUseServer = file.content.includes("'use server'") || file.content.includes('"use server"');
     const isHonoFile =
       file.content.includes("from 'hono'") ||
@@ -184,7 +206,7 @@ export function buildNextJsCodeGraph(files: SourceFile[]): NextJsCodeGraph {
       });
     }
 
-    if (isPage && pageComponents.length > 0) {
+    if ((isPage || isViteSpaRoot) && pageComponents.length > 0) {
       pagesMap.set(file.path, pageComponents);
     }
   }
@@ -209,6 +231,7 @@ export function buildNextJsCodeGraph(files: SourceFile[]): NextJsCodeGraph {
       routeHandlers,
       pages,
     },
+    spaEntries,
   };
 }
 
@@ -218,8 +241,16 @@ export function serializeCodeGraphForPrompt(graph: NextJsCodeGraph): string {
   const routeCount = graph.routeMap.routeHandlers.length;
   const pageCount = graph.routeMap.pages.length;
 
-  let summary = `=== FUNCTION & COMPONENT CODE GRAPH (Next.js + Hono) ===\n`;
-  summary += `Total Symbols: ${symbolCount} | Route Handlers: ${routeCount} | Pages: ${pageCount} | Render Edges: ${renderCount}\n\n`;
+  let summary = `=== FUNCTION & COMPONENT CODE GRAPH (Next.js + Hono + Vite) ===\n`;
+  summary += `Total Symbols: ${symbolCount} | Route Handlers: ${routeCount} | Pages: ${pageCount} | Render Edges: ${renderCount} | SPA Entries: ${graph.spaEntries.length}\n\n`;
+
+  if (graph.spaEntries.length > 0) {
+    summary += `--- VITE SPA ENTRY POINTS (index.html -> module) ---\n`;
+    for (const entry of graph.spaEntries) {
+      summary += `  • @[/${entry.htmlPath}] mounts @[/${entry.entryPath}]\n`;
+    }
+    summary += `\n`;
+  }
 
   if (graph.routeMap.routeHandlers.length > 0) {
     summary += `--- API ROUTE HANDLERS (Next.js route.ts + Hono endpoints) ---\n`;

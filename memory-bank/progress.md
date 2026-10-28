@@ -42,7 +42,16 @@
   - Verified: `eslint` clean, `next build` green (typecheck included), zero lingering `Next.js Expert` / `NextExpert` / `Hono Expert` references in app code
 
 ## Current Status
-Production-Ready. Dual-framework (Next.js + Hono) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, Muse Spark cascade integration, and fully synchronized Memory Bank.
+Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, Muse Spark cascade integration, and fully synchronized Memory Bank.
+
+## Completed Modules (cont.)
+- [x] **Vite SPA Cartography Support**:
+  - `DetectedFramework` extended with `'vite'` (`/types/index.ts`); new `vite-entry` / `vite-config` / `vite-component` file roles
+  - Detection via `vite.config.*`, `index.html` + vite imports, and package.json vite deps (`/lib/framework-detector.ts`); `Vite SPA & SSR` workspace badge label
+  - Entry classifiers, HTML `<script src>` import extraction, and sibling-entry closure (`/lib/nextjs-indexer.ts`)
+  - `spaEntries` mount mapping + `src/App.*` as SPA render-tree root (`/lib/nextjs-code-graph.ts`)
+  - Vite router scope note + scoring boosts in embedding and keyword tiers (`/lib/local-context-router.ts`)
+  - Verified: 8/8 new (`/lib/vite-support.test.ts`) + 17/17 existing `node:test` pass, `tsc --noEmit` clean, `eslint` clean, `pnpm build` green
 
 ## Completed Modules (cont.)
 - [x] **Muse Spark Model Integration (`muse-spark-1.3-contributor` + `muse-spark-1.3`)**:

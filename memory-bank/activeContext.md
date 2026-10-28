@@ -1,6 +1,14 @@
-# Active Context: Casper Rebrand + Dual-Framework Cartography (Next.js + Hono) + Dedicated Settings Page
+# Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Implemented Vite SPA cartography alongside Next.js/Hono (`DetectedFramework` gains `'vite'`):
+- **Types (`/types/index.ts`)**: `DetectedFramework` includes `'vite'`; `NextJsFileCard['role']` gains `vite-entry` / `vite-config` / `vite-component`.
+- **Detector (`/lib/framework-detector.ts`)**: `vite.config.*` tree paths, `index.html` + `from 'vite'` imports, and `vite` / `@vitejs/plugin-react` package deps return `'vite'`; badge label `Vite SPA & SSR`.
+- **Indexer (`/lib/nextjs-indexer.ts`)**: Vite role classifiers, `<script src>` HTML entry-import extraction, web-root absolute (`/src/...`) closure resolution, and sibling entry expansion (`index.html` ↔ `src/main.*` ↔ `src/App.*`).
+- **Code graph (`/lib/nextjs-code-graph.ts`)**: `spaEntries` (`index.html` → mounted module), `src/App.*` treated as SPA render-tree root in `routeMap.pages`, Vite section in serialized summary.
+- **Local router (`/lib/local-context-router.ts`)**: Vite scope note plus config/entry/component scoring boosts in Arctic-Embed-XS and keyword fallback tiers.
+- **Tests (`/lib/vite-support.test.ts`)**: 8 `node:test` cases (detection, badge, roles, closure, render tree); type-only `@/` imports so plain `node --test` resolves.
+- Verified: 8/8 new + 17/17 existing tests pass, `tsc --noEmit` clean, `eslint` clean on all touched files, `pnpm build` green.
 Implemented Muse Spark model integration across types, pricing, settings, and compile cascade (`muse-spark-1.3-contributor` $0.10/$0.20 per M, `muse-spark-1.3` $1.25/$4.25 per M):
 - **Types (`/types/index.ts`)**: `AppSettings.museApiKey?`, `ModelPricingTier.cachedInputCostPerMillion?`.
 - **Pricing (`/lib/utils.ts`)**: both Muse tiers in `MODEL_PRICING_TIERS`; `resolveModelPricing` matches contributor → standard → Gemini; `calculateModelCost` unchanged in shape. Three new `node:test` cases in `/lib/utils.test.ts` (10/10 pass).

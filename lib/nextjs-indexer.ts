@@ -1,4 +1,4 @@
-import { SourceFile } from '@/types';
+import type { SourceFile } from '@/types';
 
 export interface NextJsFileCard {
   path: string;
@@ -10,6 +10,9 @@ export interface NextJsFileCard {
     | 'middleware'
     | 'hono-route'
     | 'hono-middleware'
+    | 'vite-entry'
+    | 'vite-config'
+    | 'vite-component'
     | 'client-component'
     | 'server-component'
     | 'hook'
@@ -47,6 +50,43 @@ function hasHonoRouteCallShape(content?: string): boolean {
   return /\.\s*(get|post|put|delete|patch|options|head|all|use|route)\s*\(\s*['"`/]/.test(content);
 }
 
+function isViteConfigPath(path: string): boolean {
+  const p = path.toLowerCase();
+  return p.includes('vite.config.') || p.endsWith('/vite.config') || p === 'vite.config';
+}
+
+function isViteEntryPath(path: string): boolean {
+  const p = path.toLowerCase();
+  return (
+    p === 'index.html' ||
+    p.endsWith('/index.html') ||
+    p.includes('src/main.') ||
+    p === 'src/main'
+  );
+}
+
+function isViteComponentPath(path: string, content?: string): boolean {
+  const p = path.toLowerCase();
+  if (p.includes('src/app.') || p === 'src/app') return true;
+  if (!content) return false;
+  return (
+    p.startsWith('src/') &&
+    (p.endsWith('.tsx') || p.endsWith('.jsx')) &&
+    (content.includes("from 'vite'") || content.includes('from "vite"'))
+  );
+}
+
+/** Extracts `<script src="...">` entry injections from Vite index.html files. */
+export function extractHtmlEntryImports(content: string): string[] {
+  if (!content) return [];
+  const imports: string[] = [];
+  const matches = content.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi);
+  for (const match of matches) {
+    if (match[1]) imports.push(match[1]);
+  }
+  return Array.from(new Set(imports));
+}
+
 export function classifyNextJsRole(path: string, content?: string): NextJsFileCard['role'] {
   const p = path.toLowerCase();
   const strongHono = isStrongHonoFile(path, content);
@@ -57,8 +97,11 @@ export function classifyNextJsRole(path: string, content?: string): NextJsFileCa
   if (strongHono && content && /\.\s*use\s*\(/.test(content)) return 'hono-middleware';
   if (p.includes('route.ts') || p.includes('route.js')) return 'route-handler';
   if (strongHono) return 'hono-route';
+  if (isViteConfigPath(path)) return 'vite-config';
+  if (isViteEntryPath(path)) return 'vite-entry';
   if (p.includes('layout.tsx') || p.includes('layout.jsx')) return 'app-layout';
   if (p.includes('page.tsx') || p.includes('page.jsx')) return 'app-page';
+  if (isViteComponentPath(path, content)) return 'vite-component';
   if (p.includes('action') || (content && content.includes("'use server'"))) return 'server-action';
   // Weak Hono signal (method-call shape without an explicit hono import):
   // checked after Next.js structural roles so pages/layouts/actions keep priority.
@@ -104,6 +147,13 @@ export function buildNextJsRepoIndex(files: SourceFile[]): NextJsFileCard[] {
   return files.map((file) => {
     const role = classifyNextJsRole(file.path, file.content);
     const { exports, imports } = extractExportsAndImports(file.content);
+    // Vite HTML entry injection: <script src="/src/main.tsx"> maps the
+    // index.html entry point into the module graph closure.
+    if (file.path.toLowerCase().endsWith('.html')) {
+      for (const entry of extractHtmlEntryImports(file.content)) {
+        if (!imports.includes(entry)) imports.push(entry);
+      }
+    }
     const expStr = exports.length > 0 ? `exp:${exports.slice(0, 4).join(',')}` : 'exp:none';
     const impStr = imports.length > 0 ? `imp:${imports.slice(0, 4).join(',')}` : 'imp:none';
     const skeletonLine = `${file.path} [${role}] ${expStr} ${impStr}`;
@@ -149,15 +199,40 @@ export function expandWithNextJsImportClosure(
     }
   }
 
+  // 1b. If a Vite entry point is selected, attach its sibling entry files
+  // (index.html <-> src/main.* <-> src/App.*) so the SPA mount chain stays whole.
+  const hasViteEntry = Array.from(selectedSet).some(
+    (p) => isViteEntryPath(p) || p.toLowerCase().includes('src/app.')
+  );
+  if (hasViteEntry) {
+    const entryCandidates = repoIndex.filter(
+      (f) => isViteEntryPath(f.path) || f.path.toLowerCase().includes('src/app.')
+    );
+    for (const candidate of entryCandidates) {
+      if (!selectedSet.has(candidate.path) && addedPaths.length < maxExtraFiles) {
+        addedPaths.push(candidate.path);
+        selectedSet.add(candidate.path);
+      }
+    }
+  }
+
   // 2. Add 1-hop imported types, hooks, and lib utilities
   for (const path of Array.from(selectedSet)) {
     const card = repoIndex.find((f) => f.path === path);
     if (!card) continue;
 
     for (const imp of card.imports) {
-      if (imp.startsWith('@/') || imp.startsWith('./') || imp.startsWith('../')) {
+      // Vite HTML entries inject web-root absolute paths ("/src/main.tsx");
+      // strip the leading slash so they resolve against the repo index too.
+      const normalizedImp = imp.startsWith('/') && !imp.startsWith('//') ? imp.slice(1) : imp;
+      if (
+        normalizedImp.startsWith('@/') ||
+        normalizedImp.startsWith('./') ||
+        normalizedImp.startsWith('../') ||
+        normalizedImp !== imp
+      ) {
         // Find matching file in repo index
-        const cleanImp = imp.replace(/^@\//, '');
+        const cleanImp = normalizedImp.replace(/^@\//, '');
         const matchingFile = repoIndex.find(
           (f) =>
             f.path === cleanImp ||

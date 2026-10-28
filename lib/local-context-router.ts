@@ -51,7 +51,10 @@ function frameworkRouterNote(framework: DetectedFramework): string {
   if (framework === 'nextjs') {
     return `Detected Framework: Next.js App Router. Prioritize app/**/page.tsx, layouts, route handlers, and Server Actions.`;
   }
-  return `Detected Framework: unknown. Inspect both Next.js App Router conventions and Hono controller structures (routers, middleware, RPC) before selecting files.`;
+  if (framework === 'vite') {
+    return `Detected Framework: Vite SPA / SSR frontend. Prioritize vite.config.ts, index.html, entry points (src/main.tsx, src/App.tsx), component trees, and client state hooks.`;
+  }
+  return `Detected Framework: unknown. Inspect Next.js App Router conventions, Hono controller structures (routers, middleware, RPC), and Vite SPA entry points (vite.config.ts, index.html, src/main.*, src/App.*) before selecting files.`;
 }
 
 export async function checkGeminiNanoAvailability(): Promise<'available' | 'readily' | 'downloadable' | 'unsupported'> {
@@ -618,6 +621,12 @@ ${routerScopeNote}`;
           if ((q.includes('layout') || q.includes('root')) && p.includes('layout')) score += 0.3;
           if ((q.includes('page') || q.includes('home')) && p.includes('page')) score += 0.25;
           if (q.includes('hook') && p.includes('hook')) score += 0.3;
+          // Vite SPA entry points: config, HTML mount point, and main/App modules
+          if (detectedFramework === 'vite' && (p.includes('vite.config') || p.includes('src/main') || p.includes('src/app'))) score += 0.4;
+          const viteQuery =
+            q.includes('vite') || q.includes('entry') || q.includes('mount') ||
+            q.includes('component') || q.includes('frontend') || q.includes('spa');
+          if (viteQuery && (p.includes('vite.config') || p.includes('index.html') || p.includes('src/main') || p.includes('src/app'))) score += 0.3;
           // Hono controller structures: routers, middleware, RPC & validators
           const skeleton = (item.skeleton || '').toLowerCase();
           const honoQuery =
@@ -680,6 +689,9 @@ ${routerScopeNote}`;
     // Hono controller structures: routers, middleware, RPC & validators
     if ((q.includes('hono') || q.includes('endpoint') || q.includes('middleware') || q.includes('rpc') || q.includes('validator')) && (p.includes('routes/') || p.includes('middleware') || p.includes('src/index') || p.includes('app.ts') || p.includes('wrangler'))) score += 5;
     if ((q.includes('api') || q.includes('route')) && (p.includes('routes/') || p.includes('src/index'))) score += 4;
+    // Vite SPA entry points: config, HTML mount point, and main/App modules
+    if (detectedFramework === 'vite' && (p.includes('vite.config') || p.includes('index.html') || p.includes('src/main') || p.includes('src/app'))) score += 5;
+    if ((q.includes('vite') || q.includes('entry') || q.includes('frontend') || q.includes('spa')) && (p.includes('vite.config') || p.includes('index.html') || p.includes('src/main') || p.includes('src/app'))) score += 4;
     return { path, score };
   });
 

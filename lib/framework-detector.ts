@@ -1,9 +1,9 @@
-import { SourceFile, DetectedFramework } from '@/types';
+import type { SourceFile, DetectedFramework } from '@/types';
 
 /**
  * Robust framework auto-detection engine.
  * Inspects package.json dependencies, framework config files, and
- * directory-tree patterns to classify a repository as Next.js or Hono.
+ * directory-tree patterns to classify a repository as Next.js, Hono, or Vite.
  * Framework-agnostic by design: returns 'unknown' when no indicator matches
  * instead of assuming every repository is a Next.js App Router project.
  */
@@ -17,6 +17,25 @@ export function detectRepositoryFramework(
     ? treePaths.map((p) => (p || '').toLowerCase())
     : [];
   const allPaths = filePaths.concat(extraPaths);
+
+  const hasViteConfig = allPaths.some(
+    (p) => p.includes('vite.config.') || p === 'vite.config'
+  );
+  const hasIndexHtml = allPaths.some(
+    (p) => p === 'index.html' || p.endsWith('/index.html')
+  );
+  const hasViteImport = safeFiles.some(
+    (f) =>
+      f?.content &&
+      (f.content.includes("from 'vite'") ||
+        f.content.includes('from "vite"') ||
+        f.content.includes("from 'vite/") ||
+        f.content.includes('from "vite/'))
+  );
+
+  if (hasViteConfig || (hasIndexHtml && hasViteImport)) {
+    return 'vite';
+  }
 
   const hasNextConfig = allPaths.some(
     (p) => p.includes('next.config.') || p === 'next.config'
@@ -85,10 +104,12 @@ export function detectRepositoryFramework(
         ...(pkg?.devDependencies || {}),
         ...(pkg?.peerDependencies || {}),
       };
+      if ('vite' in deps || '@vitejs/plugin-react' in deps) return 'vite';
       if ('hono' in deps || 'hono/zod-validator' in deps) return 'hono';
       if ('next' in deps) return 'nextjs';
     } catch {
       // Malformed package.json: fall back to raw substring scan.
+      if (pkgFile.content.includes('"vite"')) return 'vite';
       if (pkgFile.content.includes('"hono"')) return 'hono';
       if (pkgFile.content.includes('"next"')) return 'nextjs';
     }
@@ -101,5 +122,6 @@ export function detectRepositoryFramework(
 export function frameworkBadgeLabel(framework: DetectedFramework): string {
   if (framework === 'hono') return 'Hono Edge Router';
   if (framework === 'nextjs') return 'Next.js App Router';
+  if (framework === 'vite') return 'Vite SPA & SSR';
   return 'Unknown Framework';
 }

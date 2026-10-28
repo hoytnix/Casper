@@ -36,7 +36,7 @@ export interface BtwAnswer {
   confidenceScore: number;
 }
 
-export type DetectedFramework = 'nextjs' | 'hono' | 'unknown';
+export type DetectedFramework = 'nextjs' | 'hono' | 'vite' | 'unknown';
 
 export interface Repo {
   id: string;
@@ -232,6 +232,9 @@ export interface NextJsFileCard {
     | 'hono-middleware'
     | 'client-component'
     | 'server-component'
+    | 'vite-entry'
+    | 'vite-config'
+    | 'vite-component'
     | 'hook'
     | 'store'
     | 'types'
