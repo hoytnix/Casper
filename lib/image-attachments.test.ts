@@ -4,6 +4,7 @@ import {
   MAX_IMAGES_PER_MESSAGE,
   MAX_IMAGE_BYTES,
   MAX_TOTAL_BYTES,
+  computeTargetSize,
   chatImagesSchema,
   compileImagesInputSchema,
   estimateBase64Bytes,
@@ -128,4 +129,11 @@ test('toMuseImageParts returns neutral mime+base64 payloads', () => {
   assert.equal(parts.length, 1);
   assert.equal(parts[0].mimeType, 'image/png');
   assert.ok(parts[0].data.length > 0);
+});
+
+test('computeTargetSize caps the long edge preserving aspect', () => {
+  assert.deepEqual(computeTargetSize(3200, 2000), { width: 1600, height: 1000 });
+  assert.deepEqual(computeTargetSize(800, 600), { width: 800, height: 600 });
+  assert.deepEqual(computeTargetSize(0, 0), { width: 1600, height: 1600 });
+  assert.deepEqual(computeTargetSize(100, 4000), { width: 40, height: 1600 });
 });

@@ -180,50 +180,104 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-// Downscales + JPEG-recompresses oversized images entirely in-browser
-// (createImageBitmap + OffscreenCanvas, HTMLCanvasElement fallback).
-// Returns the original file when it already fits. No Node sharp, no fs.
-export async function downscaleImageFile(file: File): Promise<File> {
-  const dims = await probeImageDimensions(file);
+// Pure fit computation: largest size within maxDim preserving aspect.
+// Unknown (0) dimensions fall back to maxDim so callers stay deterministic.
+export function computeTargetSize(
+  width: number,
+  height: number,
+  maxDim: number = MAX_IMAGE_DIMENSION
+): { width: number; height: number } {
+  const w = width > 0 ? width : maxDim;
+  const h = height > 0 ? height : maxDim;
+  const scale = Math.min(1, maxDim / Math.max(1, w), maxDim / Math.max(1, h));
+  return {
+    width: Math.max(1, Math.round(w * scale)),
+    height: Math.max(1, Math.round(h * scale)),
+  };
+}
+
+async function encodeBitmapToJpeg(
+  bitmap: ImageBitmap,
+  w: number,
+  h: number,
+  fileName: string
+): Promise<File> {
+  const jpegName = fileName.replace(/\.[a-z]+$/i, '.jpg');
+  if (typeof OffscreenCanvas !== 'undefined') {
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('no 2d context');
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: IMAGE_JPEG_QUALITY });
+    return new File([blob], jpegName, { type: 'image/jpeg' });
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('no 2d context');
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  const blob: Blob | null = await new Promise((resolve) =>
+    canvas.toBlob(resolve, 'image/jpeg', IMAGE_JPEG_QUALITY)
+  );
+  if (!blob) throw new Error('canvas encode failed');
+  return new File([blob], jpegName, { type: 'image/jpeg' });
+}
+
+function closeBitmap(bitmap: ImageBitmap): void {
+  try {
+    if (typeof bitmap.close === 'function') bitmap.close();
+  } catch {
+    // ignore
+  }
+}
+
+// Downscales + JPEG-recompresses oversized images entirely in-browser.
+// Fast path decodes DIRECTLY at target size via createImageBitmap resize
+// options — no full-resolution decode, no full-res canvas upload — which
+// is what kept multi-megapixel pastes from blocking the UI thread for
+// seconds. Falls back to full decode + canvas scale where resize options
+// are unsupported. Returns the original file when it already fits.
+// No Node sharp, no fs. Pass knownDims to skip the dimension probe.
+export async function downscaleImageFile(
+  file: File,
+  knownDims?: { width: number; height: number }
+): Promise<File> {
+  const dims = knownDims ?? (await probeImageDimensions(file));
   const needsResize =
     file.size > MAX_IMAGE_BYTES ||
     dims.width > MAX_IMAGE_DIMENSION ||
     dims.height > MAX_IMAGE_DIMENSION;
   if (!needsResize) return file;
-  const scale = Math.min(
-    1,
-    MAX_IMAGE_DIMENSION / Math.max(1, dims.width),
-    MAX_IMAGE_DIMENSION / Math.max(1, dims.height)
-  );
-  const targetW = Math.max(1, Math.round((dims.width || MAX_IMAGE_DIMENSION) * scale));
-  const targetH = Math.max(1, Math.round((dims.height || MAX_IMAGE_DIMENSION) * scale));
+  const target = computeTargetSize(dims.width, dims.height);
   try {
-    const bitmap = await createImageBitmap(file);
-    const w = Math.min(bitmap.width, targetW);
-    const h = Math.min(bitmap.height, targetH);
-    if (typeof OffscreenCanvas !== 'undefined') {
-      const canvas = new OffscreenCanvas(w, h);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('no 2d context');
-      ctx.drawImage(bitmap, 0, 0, w, h);
-      const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: IMAGE_JPEG_QUALITY });
-      if (typeof bitmap.close === 'function') bitmap.close();
-      return new File([blob], file.name.replace(/\.[a-z]+$/i, '.jpg'), { type: 'image/jpeg' });
+    // Fast path: decode at size. May throw TypeError where unsupported.
+    const bitmap = await createImageBitmap(file, {
+      resizeWidth: target.width,
+      resizeHeight: target.height,
+      resizeQuality: 'high',
+    });
+    try {
+      const w = Math.min(bitmap.width, target.width);
+      const h = Math.min(bitmap.height, target.height);
+      return await encodeBitmapToJpeg(bitmap, w, h, file.name);
+    } finally {
+      closeBitmap(bitmap);
     }
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('no 2d context');
-    ctx.drawImage(bitmap, 0, 0, w, h);
-    if (typeof bitmap.close === 'function') bitmap.close();
-    const blob: Blob | null = await new Promise((resolve) =>
-      canvas.toBlob(resolve, 'image/jpeg', IMAGE_JPEG_QUALITY)
-    );
-    if (!blob) throw new Error('canvas encode failed');
-    return new File([blob], file.name.replace(/\.[a-z]+$/i, '.jpg'), { type: 'image/jpeg' });
   } catch {
-    return file;
+    // Legacy path: full decode, then scale on canvas.
+    try {
+      const bitmap = await createImageBitmap(file);
+      try {
+        const w = Math.min(bitmap.width, target.width);
+        const h = Math.min(bitmap.height, target.height);
+        return await encodeBitmapToJpeg(bitmap, w, h, file.name);
+      } finally {
+        closeBitmap(bitmap);
+      }
+    } catch {
+      return file;
+    }
   }
 }
 
@@ -231,7 +285,13 @@ export async function fileToImageAttachment(file: File): Promise<ImageAttachment
   if (!isSupportedMime(file.type)) {
     throw new Error(`Unsupported image type: ${file.type || 'unknown'}. Use PNG, JPEG, WebP, or GIF.`);
   }
-  const fitted = await downscaleImageFile(file);
+  // Single dimension probe: downscale reuses it, and the final dims are
+  // derived from the same deterministic fit — no second decode.
+  const probed = await probeImageDimensions(file);
+  const fitted = await downscaleImageFile(
+    file,
+    probed.width > 0 && probed.height > 0 ? probed : undefined
+  );
   if (fitted.size > MAX_IMAGE_BYTES) {
     throw new Error(`${file.name} exceeds 5MB even after downscaling.`);
   }
@@ -239,14 +299,15 @@ export async function fileToImageAttachment(file: File): Promise<ImageAttachment
   if (!DATA_URL_RE.test(dataUrl)) {
     throw new Error(`${file.name} could not be encoded as a supported image.`);
   }
-  const dims = await probeImageDimensions(fitted);
+  const finalDims =
+    fitted === file ? probed : computeTargetSize(probed.width, probed.height);
   return {
     id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: file.name.slice(0, 128) || 'pasted-image',
     mimeType: (isSupportedMime(fitted.type) ? fitted.type : file.type) as ImageAttachment['mimeType'],
     sizeBytes: fitted.size,
-    width: dims.width > 0 ? dims.width : undefined,
-    height: dims.height > 0 ? dims.height : undefined,
+    width: finalDims.width > 0 ? finalDims.width : undefined,
+    height: finalDims.height > 0 ? finalDims.height : undefined,
     dataUrl,
     createdAt: Date.now(),
   };

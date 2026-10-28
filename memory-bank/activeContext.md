@@ -1,6 +1,11 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Fixed textarea INP block (5.4s handler-blocked UI) at both long-task sources:
+- **Paste decode (`/lib/image-attachments.ts`)**: was 3 full decodes per file (Image probe + `createImageBitmap` full-res + re-probe) plus full-res canvas upload and main-thread JPEG encode. Now single probe reused via `downscaleImageFile(file, knownDims?)`, decode-directly-at-size via `createImageBitmap` resize options (canvas-scale legacy fallback), shared `encodeBitmapToJpeg`/`closeBitmap` helpers, final dims derived deterministically. New pure `computeTargetSize()` + test.
+- **Ingest feedback (`/components/ChatCompiler.tsx`)**: `isProcessingImages` set synchronously + one-macrotask paint yield before heavy work so "Attaching…" lands first; submit (button + Cmd+Enter) blocked while processing.
+- **Typing path (`/components/ChatCompiler.tsx`)**: module-scope `MemoMarkdown` (`React.memo` on content string) replaces the inline `<Markdown components={...}>` so keystrokes skip remark/rehype re-parse of every bubble; list handlers stabilized (`useCallback`, `isHtmlCorrupted` hoisted). Rejected the 300-line `useMemo` wrap as too fragile; rejected Web Worker (resize-during-decode removes the need).
+- Verified: 97/97 `node:test` (1 new), `tsc` clean, `eslint` 0 errors, `pnpm build` green. Caveat: browser decode paths untestable under `node:test` by convention; field INP re-measurement still needs a real browser run.
 Eliminated double-rendered assistant responses with single-compile ownership:
 - **Vectors traced**: double-submit race CONFIRMED (stale-closure `messages`, async `isBusy`, no abort); stale-closure finalization CONFIRMED (`saveMessages` from pre-stream array, state/storage divergence); stream double-append NOT FOUND (functional appends, once-only firstChunk, emit-once flush) — guards added as insurance only.
 - **Types (`/types/index.ts`)**: `compileId?` on `snapshotMeta` + `IngestionProgress`.

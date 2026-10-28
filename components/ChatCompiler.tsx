@@ -45,6 +45,52 @@ interface ChatCompilerProps {
   snapshot: IngestionSnapshot | null;
 }
 
+// Module scope: pure content check, stable by definition — keeps it out of
+// the memoized message list's dependency set.
+function isHtmlCorrupted(content: string): boolean {
+  if (!content) return false;
+  const trimmed = content.trim().toLowerCase();
+  return (
+    trimmed.startsWith('<!doctype') ||
+    trimmed.startsWith('<html') ||
+    trimmed.includes('<title>starting server...</title>') ||
+    trimmed.includes('please wait while your application starts')
+  );
+}
+
+// Memoized Markdown bubble: re-parses only when `content` changes.
+// Without this, every textarea keystroke re-runs remark/rehype over every
+// assistant bubble — the per-keystroke half of the textarea INP problem.
+const MemoMarkdown = React.memo(function MemoMarkdown({ content }: { content: string }) {
+  return (
+    <Markdown
+      components={{
+        code({ className, children, ...props }) {
+          const isInline = !className;
+          return isInline ? (
+            <code className="px-1.5 py-0.5 rounded bg-slate-900 border border-white/[0.08] text-indigo-300 font-mono text-xs" {...props}>
+              {children}
+            </code>
+          ) : (
+            <code className={className} {...props}>
+              {children}
+            </code>
+          );
+        },
+        pre({ children }) {
+          return (
+            <pre className="p-4 rounded-xl bg-[#06080e] border border-white/[0.08] overflow-x-auto text-xs font-mono text-slate-200 shadow-inner leading-[1.8] my-4">
+              {children}
+            </pre>
+          );
+        },
+      }}
+    >
+      {formatCompiledPrompt(content)}
+    </Markdown>
+  );
+});
+
 export const ChatCompiler: React.FC<ChatCompilerProps> = ({
   repo,
   messages,
@@ -67,24 +113,34 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [isProcessingImages, setIsProcessingImages] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const directiveReqId = useRef(0);
 
-  const toggleMinimize = (msgId: string) => {
-    setMinimizedMsgs((prev) => {
-      const next = new Set(prev);
-      if (next.has(msgId)) next.delete(msgId);
-      else next.add(msgId);
-      return next;
-    });
-    onToggleMinimize?.(msgId);
-  };
+  // Stable callbacks (functional setState only): the memoized message
+  // list below depends on their identity, so they must not change per
+  // keystroke — otherwise every textarea input re-parses all Markdown.
+  const toggleMinimize = React.useCallback(
+    (msgId: string) => {
+      setMinimizedMsgs((prev) => {
+        const next = new Set(prev);
+        if (next.has(msgId)) next.delete(msgId);
+        else next.add(msgId);
+        return next;
+      });
+      onToggleMinimize?.(msgId);
+    },
+    [onToggleMinimize]
+  );
 
-  const isMsgMinimized = (msg: ChatMessage) =>
-    msg.isMinimized ? !minimizedMsgs.has(msg.id) : minimizedMsgs.has(msg.id);
+  const isMsgMinimized = React.useCallback(
+    (msg: ChatMessage) =>
+      msg.isMinimized ? !minimizedMsgs.has(msg.id) : minimizedMsgs.has(msg.id),
+    [minimizedMsgs]
+  );
 
-  const toggleThinking = (msgId: string) => {
+  const toggleThinking = React.useCallback((msgId: string) => {
     setExpandedThinking((prev) => {
       const next = new Set(prev);
       if (next.has(msgId)) {
@@ -94,20 +150,9 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
       }
       return next;
     });
-  };
+  }, []);
 
-  const isHtmlCorrupted = (content: string): boolean => {
-    if (!content) return false;
-    const trimmed = content.trim().toLowerCase();
-    return (
-      trimmed.startsWith('<!doctype') ||
-      trimmed.startsWith('<html') ||
-      trimmed.includes('<title>starting server...</title>') ||
-      trimmed.includes('please wait while your application starts')
-    );
-  };
-
-  const toggleTrail = (msgId: string) => {
+  const toggleTrail = React.useCallback((msgId: string) => {
     setExpandedTrails((prev) => {
       const next = new Set(prev);
       if (next.has(msgId)) {
@@ -117,7 +162,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
       }
       return next;
     });
-  };
+  }, []);
 
   const isBusy =
     progress.step !== 'idle' &&
@@ -137,7 +182,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitLockRef.current || isBusy) return;
+    if (submitLockRef.current || isBusy || isProcessingImages) return;
     if (!inputText.trim() && attachments.length === 0) return;
     submitLockRef.current = true;
     setIsSubmitting(true);
@@ -164,21 +209,31 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
     if (files.length > room) {
       setImageError(`Only ${room} more image${room === 1 ? '' : 's'} fit (limit ${MAX_IMAGES_PER_MESSAGE} at 5MB each).`);
     }
-    for (const file of accepted) {
-      try {
-        const attachment = await fileToImageAttachment(file);
-        setAttachments((prev) => {
-          if (prev.length >= MAX_IMAGES_PER_MESSAGE) return prev;
-          const checked = chatImagesSchema.safeParse([...prev, attachment]);
-          if (!checked.success) {
-            setImageError('Image rejected: exceeds size limits (5MB each, 7MB total).');
-            return prev;
-          }
-          return [...prev, attachment];
-        });
-      } catch (err) {
-        setImageError(err instanceof Error ? err.message : `Could not attach ${file.name}.`);
+    // Show feedback synchronously, then yield one macrotask so the
+    // "Attaching…" paint lands BEFORE the decode/encode work below —
+    // otherwise the whole interaction (paste → thumbnails) reads as one
+    // unresponsive block in INP.
+    setIsProcessingImages(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      for (const file of accepted) {
+        try {
+          const attachment = await fileToImageAttachment(file);
+          setAttachments((prev) => {
+            if (prev.length >= MAX_IMAGES_PER_MESSAGE) return prev;
+            const checked = chatImagesSchema.safeParse([...prev, attachment]);
+            if (!checked.success) {
+              setImageError('Image rejected: exceeds size limits (5MB each, 7MB total).');
+              return prev;
+            }
+            return [...prev, attachment];
+          });
+        } catch (err) {
+          setImageError(err instanceof Error ? err.message : `Could not attach ${file.name}.`);
+        }
       }
+    } finally {
+      setIsProcessingImages(false);
     }
   };
 
@@ -196,7 +251,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleCopy = async (id: string, text: string) => {
+  const handleCopy = React.useCallback(async (id: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedId(id);
@@ -204,7 +259,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
     } catch (e) {
       console.error('Failed to copy prompt to clipboard:', e);
     }
-  };
+  }, []);
 
   const repoKey = `${repo.owner}/${repo.repo}/${repo.branch}`;
   const snapshotFilesKey = (snapshot?.files || []).length;
@@ -615,31 +670,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                 </div>
               ) : (
                 <div className="prose prose-invert prose-xs max-w-none text-slate-300 leading-relaxed">
-                  <Markdown
-                    components={{
-                      code({ className, children, ...props }) {
-                        const isInline = !className;
-                        return isInline ? (
-                          <code className="px-1.5 py-0.5 rounded bg-slate-900 border border-white/[0.08] text-indigo-300 font-mono text-xs" {...props}>
-                            {children}
-                          </code>
-                        ) : (
-                          <code className={className} {...props}>
-                            {children}
-                          </code>
-                        );
-                      },
-                      pre({ children }) {
-                        return (
-                          <pre className="p-4 rounded-xl bg-[#06080e] border border-white/[0.08] overflow-x-auto text-xs font-mono text-slate-200 shadow-inner leading-[1.8] my-4">
-                            {children}
-                          </pre>
-                        );
-                      },
-                    }}
-                  >
-                    {formatCompiledPrompt(msg.content)}
-                  </Markdown>
+                  <MemoMarkdown content={msg.content} />
 
                   {(() => {
                     const extracted = extractSuggestedRefactors(msg.content);
@@ -766,6 +797,12 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                 {imageError}
               </div>
             )}
+            {isProcessingImages && (
+              <div className="mx-2.5 mb-2 px-2.5 py-1.5 rounded-lg bg-indigo-950/30 border border-indigo-500/30 text-[11px] text-indigo-300 flex items-center gap-2">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Attaching screenshots…
+              </div>
+            )}
             <textarea
               rows={3}
               value={inputText}
@@ -819,7 +856,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
 
                 <button
                   type="submit"
-                  disabled={isBusy || isSubmitting || (!inputText.trim() && attachments.length === 0)}
+                  disabled={isBusy || isSubmitting || isProcessingImages || (!inputText.trim() && attachments.length === 0)}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold text-xs shadow-sm hover:shadow-indigo-500/20 transition active:scale-95"
                 >
                   <Send className="w-3.5 h-3.5" />
