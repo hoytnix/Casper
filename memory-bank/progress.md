@@ -163,3 +163,36 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Paste path was 3 full image decodes + full-res canvas upload + main-thread JPEG encode per file, all chained off the paste event. Now: single dimension probe, decode-directly-at-size (`createImageBitmap` resize options, legacy fallback), shared encode/close helpers (`/lib/image-attachments.ts`); sync "Attaching…" feedback + paint yield + submit guard (`/components/ChatCompiler.tsx`).
   - Typing path re-parsed every Markdown bubble per keystroke. Now module-scope `MemoMarkdown` (`React.memo` on content) + stabilized list callbacks; 300-line `useMemo` wrap rejected as fragile, Web Worker rejected as unnecessary.
   - Verified: 97/97 `node:test` (1 new `computeTargetSize` test), `tsc` clean, `eslint` 0 errors, `pnpm build` green. Browser decode paths not unit-coverable by repo convention; field INP re-measurement needs a real browser run.
+- [x] **Strategic Refactor Unit 1 — Compile Route Split (1091 → 373 lines)**:
+  - `/lib/prompt-templates.ts` (new, 233): instruction constants byte-identical + builders/selectors/tool declaration; 4 `node:test` cases.
+  - `/lib/agentic-exploration.ts` (new, 282): verbatim exploration protocol + `withTimeout`, DI for github fetchers; 4 `node:test` cases.
+  - `/lib/model-cascades.ts` (new, 516): Muse generator + establish/drain; owns base URL + model-tag predicate.
+  - Route keeps validation/keys/envelope/sequencing only; no runtime contract change (SSE shapes, cost math, detector semantics, compileId ownership intact).
+  - Verified: 105/105 `node:test` (8 new), `tsc` clean, `eslint` 0 errors, `pnpm build` green. Pending: live compile + cancel check; Units 2–7 (RepoWorkspace, ChatCompiler, local-context-router, useRepoStore, FinanceWorkspace, ContextInspector).
+- [x] **Strategic Refactor Unit 2 — RepoWorkspace Split (1291 → 511 lines)**:
+  - `/hooks/useRepoDeltaSync.ts` (new, 218): `verifyOnOpen` + `prepareCompileFiles` with shared refresh helper; `useEffect` dep mirror (lint-mandated).
+  - `/hooks/useCompileStream.ts` (new, 603): ownership refs + claim/isOwned/release + `runStream` (SSE loop, finalization, snapshot, finance ledger).
+  - `/components/WorkspaceHeader.tsx` (new, 263): sub-header + status badge, presentational only.
+  - No runtime contract change (ownership, SSE handling, snapshot/finance shapes intact); dead import + write-only flag purged.
+  - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green. Pending: live compile check; Units 3–7.
+- [x] **Strategic Refactor Unit 3 — ChatCompiler Split (877 → 336 lines)**:
+  - `/hooks/useChatAttachments.ts` (new, 101) + `/components/SuggestedDirectivesGrid.tsx` (new, 202) + `/components/ChatMessageItem.tsx` (new, 393).
+  - No runtime contract change (submit lock, paste/drop, directives, Markdown memo, copy path intact); no visual restyling.
+  - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green. Pending: live compile check; Units 4–7.
+- [x] **Strategic Refactor Unit 4 — Local Context Router Split (960 → 463 lines)**:
+  - `/lib/routers/qwen-mlc-router.ts` (279) + `/lib/routers/gemini-nano-router.ts` (291) + `/lib/routers/arctic-embed-router.ts` (212); orchestrator keeps gating + Tier 3 + suggestions.
+  - No runtime contract change (tier order, gates, trace shapes, warmup sequencing, suggestion cascade intact).
+  - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green. Pending: live compile check; Units 5–7.
+- [x] **Strategic Refactor Unit 5 — useRepoStore Split (598 → 358 lines)**:
+  - `/lib/chat-storage.ts` (new, 145) + `/lib/settings-store.ts` (new, 144); hook keeps state bindings + CRUD + directives cache + snapshot IO.
+  - No runtime contract change (sanitize/format/dedupe/quota/defaults/normalization intact).
+  - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green. Pending: live compile check; Units 6–7.
+- [x] **Strategic Refactor Unit 6 — FinanceWorkspace Split (519 → 191 lines)**:
+  - `/components/FinanceTrendChart.tsx` (185) + `/components/FinanceModelBreakdown.tsx` (64) + `/components/FinanceLedgerTable.tsx` (174); workspace keeps state wiring.
+  - No runtime contract change (filters, summary math, ledger shapes, delete flow intact).
+  - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green. Pending: live compile check; Unit 7.
+- [x] **Strategic Refactor Unit 7 — ContextInspector Split (477 → 211 lines)**:
+  - `/components/InspectorFileList.tsx` (185, incl. `InspectorExcludes`) + `/components/InspectorCodeGraph.tsx` (96) + `/components/InspectorUnixTrace.tsx` (72); shell keeps header/tabs/metrics/composition.
+  - No runtime contract change (tab counts, cost panel, excludes, trace shapes intact).
+  - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green.
+- [x] **Strategic Refactor COMPLETE (Units 1–7)**: route 1091→373, workspace 1291→511, compiler 877→336, router 960→463, store 598→358, finance 519→191, inspector 477→211. Pending: live compile + cancel manual check (SSE shapes preserved by verbatim moves, not yet exercised live).

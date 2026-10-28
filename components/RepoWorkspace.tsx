@@ -1,21 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import {
-  GitBranch,
-  FolderTree,
-  ExternalLink,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  Compass,
-  Layers,
-  Coins,
-  Sparkles,
-  HelpCircle,
-  Zap,
-} from 'lucide-react';
-import {
+import React, { useState, useEffect, useMemo } from 'react';
+import type {
   Repo,
   ChatMessage,
   ImageAttachment,
@@ -24,7 +10,6 @@ import {
   AppSettings,
   ExplorationStep,
   SourceFile,
-  ModelCostDetails,
   IngestionMode,
   DetectedFramework,
 } from '@/types';
@@ -35,20 +20,20 @@ import {
 } from '@/lib/image-attachments';
 import { ContextInspector } from './ContextInspector';
 import { ChatCompiler } from './ChatCompiler';
+import { WorkspaceHeader } from './WorkspaceHeader';
 import {
   fetchRepoBranches,
   fetchRepoTree,
   shouldIncludeFile,
   downloadSourceFiles,
-  assembleRepositoryContextPayload,
-  fetchRepoDelta,
-  applyFileDelta,
 } from '@/lib/github';
 import { warmUpLocalContextRouter, routeNextJsContext } from '@/lib/local-context-router';
-import { detectRepositoryFramework, frameworkBadgeLabel } from '@/lib/framework-detector';
-import { formatCostUsd, calculateModelCost, resolveModelPricing, extractSuggestedRefactors, isDuplicateDelta, replaceAssistantContent } from '@/lib/utils';
+import { detectRepositoryFramework } from '@/lib/framework-detector';
+import { replaceAssistantContent } from '@/lib/utils';
 import { normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
 import { normalizeSearchContextSize } from '@/lib/search-grounding';
+import { useRepoDeltaSync } from '@/hooks/useRepoDeltaSync';
+import { useCompileStream } from '@/hooks/useCompileStream';
 
 interface RepoWorkspaceProps {
   repo: Repo;
@@ -134,123 +119,31 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
     };
   }, [repo.owner, repo.repo, settings.githubPat, repo.branch, settings.routerEngine, snapshot]);
 
-  const snapshotRef = useRef(snapshot);
-  const saveSnapshotRef = useRef(saveSnapshot);
-  // Single-owner streaming: only the compile holding activeCompileIdRef
-  // may write messages/progress. A new submission aborts the prior reader
-  // and takes ownership; stale events are ignored by id, never by timing.
-  const activeCompileIdRef = useRef<string | null>(null);
-  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
-  const assistantIdRef = useRef<string | null>(null);
+  const { verifyOnOpen, prepareCompileFiles } = useRepoDeltaSync({
+    repo,
+    githubPat: settings.githubPat,
+    getSnapshot: () => snapshot,
+    saveSnapshot,
+    setDeltaStatus,
+    setProgressMessage: (message) => setProgress((prev) => ({ ...prev, message })),
+  });
 
-  useEffect(() => {
-    snapshotRef.current = snapshot;
-  }, [snapshot]);
-
-  useEffect(() => {
-    saveSnapshotRef.current = saveSnapshot;
-  }, [saveSnapshot]);
+  const { claimOwnership, isOwned, release, runStream } = useCompileStream({
+    setMessages,
+    setProgress,
+    saveMessages,
+    saveSnapshot,
+    onUpdateRepo,
+  });
 
   // AST-Aware Incremental Delta Verification on Repo Open or Branch Selection
   useEffect(() => {
     let isCancelled = false;
-
-    const checkIncrementalDelta = async () => {
-      const snap = snapshotRef.current;
-      if (!snap?.commitSha || !snap.files || snap.files.length === 0) {
-        setDeltaStatus('idle');
-        return;
-      }
-
-      setDeltaStatus('checking');
-      try {
-        const { sha: latestSha } = await fetchRepoTree(
-          repo.owner,
-          repo.repo,
-          repo.branch,
-          settings.githubPat
-        );
-
-        if (isCancelled) return;
-
-        if (latestSha === snap.commitSha) {
-          setDeltaStatus('cached');
-          return;
-        }
-
-        // Remote commit is different: compare delta
-        const delta = await fetchRepoDelta(
-          repo.owner,
-          repo.repo,
-          snap.commitSha,
-          latestSha,
-          settings.githubPat
-        );
-
-        if (isCancelled) return;
-
-        if (delta.isFastForward) {
-          if (delta.modifiedFiles.length > 0) {
-            setDeltaStatus('syncing');
-            const modifiedEligible = delta.modifiedFiles.filter(
-              (f) =>
-                f.status !== 'removed' &&
-                shouldIncludeFile(f.path, undefined, repo.excludedPatterns)
-            );
-            const modifiedPaths = modifiedEligible.map((f) => f.path);
-
-            let freshModifiedFiles: SourceFile[] = [];
-            if (modifiedPaths.length > 0) {
-              freshModifiedFiles = await downloadSourceFiles(
-                repo.owner,
-                repo.repo,
-                repo.branch,
-                modifiedPaths.map((p) => ({ path: p, mode: '100644', type: 'blob' as const, sha: '', size: 0, url: '' })),
-                settings.githubPat
-              );
-            }
-
-            if (isCancelled) return;
-
-            const updatedFiles = applyFileDelta(
-              snap.files,
-              delta.modifiedFiles,
-              freshModifiedFiles
-            );
-            const updatedSnapshot: IngestionSnapshot = {
-              ...snap,
-              commitSha: latestSha,
-              files: updatedFiles,
-              includedFilesCount: updatedFiles.length,
-              timestamp: Date.now(),
-            };
-            saveSnapshotRef.current(repo.id, updatedSnapshot);
-            setDeltaStatus('cached');
-          } else {
-            // Fast forward without source changes
-            const updatedSnapshot: IngestionSnapshot = {
-              ...snap,
-              commitSha: latestSha,
-              timestamp: Date.now(),
-            };
-            saveSnapshotRef.current(repo.id, updatedSnapshot);
-            setDeltaStatus('cached');
-          }
-        } else {
-          setDeltaStatus('outdated');
-        }
-      } catch (err) {
-        console.warn('Delta background verification note:', err);
-        if (!isCancelled) setDeltaStatus('idle');
-      }
-    };
-
-    checkIncrementalDelta();
-
+    verifyOnOpen(() => isCancelled);
     return () => {
       isCancelled = true;
     };
-  }, [repo.id, repo.owner, repo.repo, repo.branch, settings.githubPat, repo.excludedPatterns]);
+  }, [repo.id, repo.owner, repo.repo, repo.branch, settings.githubPat, repo.excludedPatterns, verifyOnOpen]);
 
   // Handle branch switch
   const handleBranchChange = (newBranch: string) => {
@@ -281,30 +174,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
       });
       return;
     }
-    // Single-owner handoff: abort any in-flight stream synchronously, then
-    // take ownership. Ref-based (never closure state) so rapid double
-    // submits cannot both believe they own the conversation.
-    if (activeCompileIdRef.current !== null) {
-      try {
-        await readerRef.current?.cancel();
-      } catch {
-        // Reader already closed/locked — the stale loop exits on its own.
-      }
-      // Drop the superseded placeholder (by exact id) so an aborted
-      // compile never leaves an empty bubble behind. Its user echo stays.
-      const staleAssistantId = assistantIdRef.current;
-      if (staleAssistantId) {
-        setMessages((prev) => prev.filter((m) => m.id !== staleAssistantId));
-      }
-      activeCompileIdRef.current = null;
-      readerRef.current = null;
-      assistantIdRef.current = null;
-    }
-    const compileId =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    activeCompileIdRef.current = compileId;
+    const compileId = await claimOwnership();
     const validImages = imageCheck.data;
     const imageTokens = estimateImagesTokens(validImages);
     const imageBytesTotal = sumImageBytes(validImages);
@@ -352,66 +222,12 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
       const treeLines = allBlobPaths.map((p) => `@[/${p.replace(/^\//, '')}]`).sort();
       const treeListing = treeLines.join('\n');
 
-      // ==========================================
-      // AST-AWARE INCREMENTAL DELTA CACHE & INGESTION
-      // ==========================================
-      const currentCommitSha = snapshot?.commitSha;
-      let activeFiles: SourceFile[] = snapshot?.files || [];
-      let deltaFetched = false;
-
-      if (currentCommitSha && activeFiles.length > 0) {
-        if (currentCommitSha === commitSha) {
-          // Exact match: 0 blob downloads required
-          setProgress((prev) => ({
-            ...prev,
-            message: `Snapshot matches remote HEAD (${commitSha.slice(0, 7)}). Zero file downloads required.`,
-          }));
-          deltaFetched = true;
-          setDeltaStatus('cached');
-        } else {
-          // Commit SHA changed: query GitHub compare API for incremental delta
-          setProgress((prev) => ({
-            ...prev,
-            message: `Comparing commits ${currentCommitSha.slice(0, 7)}...${commitSha.slice(0, 7)} for delta...`,
-          }));
-
-          const delta = await fetchRepoDelta(
-            repo.owner,
-            repo.repo,
-            currentCommitSha,
-            commitSha,
-            settings.githubPat
-          );
-
-          if (delta.isFastForward) {
-            const modifiedEligible = delta.modifiedFiles.filter(
-              (f) =>
-                f.status !== 'removed' &&
-                shouldIncludeFile(f.path, undefined, repo.excludedPatterns)
-            );
-            const modifiedPaths = modifiedEligible.map((f) => f.path);
-
-            let freshModifiedFiles: SourceFile[] = [];
-            if (modifiedPaths.length > 0) {
-              setProgress((prev) => ({
-                ...prev,
-                message: `Incremental delta detected: fetching ${modifiedPaths.length} modified/added blobs only...`,
-              }));
-              freshModifiedFiles = await downloadSourceFiles(
-                repo.owner,
-                repo.repo,
-                repo.branch,
-                modifiedPaths.map((p) => ({ path: p, mode: '100644', type: 'blob' as const, sha: '', size: 0, url: '' })),
-                settings.githubPat
-              );
-            }
-
-            activeFiles = applyFileDelta(activeFiles, delta.modifiedFiles, freshModifiedFiles);
-            deltaFetched = true;
-            setDeltaStatus('cached');
-          }
-        }
-      }
+      // AST-aware incremental delta cache: fast-forward applies remote
+      // changes onto the snapshot without refetching the world. Details
+      // live in useRepoDeltaSync; exact-match short-circuits with zero
+      // blob downloads.
+      const prepared = await prepareCompileFiles({ commitSha, snapshot });
+      let activeFiles: SourceFile[] = prepared.activeFiles;
 
       // ==========================================
       // IN-BROWSER AGENTIC CONTEXT ROUTER (Gemini Nano + Arctic-Embed-XS)
@@ -514,7 +330,6 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
 
         const assistantMsgId = `assistant-${Date.now()}-${compileId.slice(0, 8)}`;
         currentAssistantMsgId = assistantMsgId;
-        assistantIdRef.current = assistantMsgId;
         const assistantMsg: ChatMessage = {
           id: assistantMsgId,
           role: 'assistant',
@@ -564,10 +379,13 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           .filter((m) => typeof m.content === 'string' && m.content.trim().length > 0)
           .map((m) => ({ role: m.role, content: m.content }));
 
-        const response = await fetch('/api/compile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        // Stream consumption, functional finalization, snapshot persist,
+        // and finance auto-log all live in useCompileStream. Failures throw
+        // to the catch below, which renders the notice and releases.
+        await runStream({
+          compileId,
+          assistantMsgId,
+          requestBody: {
             mode,
             compileId,
             owner: repo.owner,
@@ -589,442 +407,32 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             models: settings.models,
             maxRounds: settings.maxAgenticRounds || 3,
             requestTimeout: settings.requestTimeout || 60,
-          }),
-        });
-
-          // Guard against reverse proxy warmup/timeout HTML pages
-          const contentType = response.headers.get('content-type') || '';
-          if (contentType.includes('text/html')) {
-            const rawHtml = await response.text().catch(() => '');
-            if (
-              rawHtml.includes('Starting Server') ||
-              rawHtml.includes('warmup') ||
-              rawHtml.includes('<!doctype')
-            ) {
-              throw new Error(
-                'Server gateway warmup screen intercepted. The upstream request timed out. Please try compiling again.'
-              );
-            }
-            throw new Error(`Compiler returned HTML (${response.status}) instead of an event stream.`);
-          }
-
-          if (!response.ok) {
-            const errorJson = await response.json().catch(() => null);
-            throw new Error(errorJson?.error || `Agentic server error (${response.status})`);
-          }
-
-          if (!response.body) {
-            throw new Error('No streaming response body received');
-          }
-
-          const reader = response.body.getReader();
-          readerRef.current = reader;
-          const decoder = new TextDecoder();
-          let buffer = '';
-          let accumulatedContent = '';
-          const currentTrail: ExplorationStep[] = [];
-          let investigatedCount = 0;
-          let investigatedFiles: SourceFile[] = [];
-          let modelUsed = '';
-          let serverFramework: string | null = null;
-          let fallbackPass = 1;
-          let accumulatedThinking = '';
-          let serverThinkingLevel = requestThinkingLevel;
-          let serverInputTokens = 3500;
-          let finalCostDetails: ModelCostDetails | null = null;
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const events = buffer.split('\n\n');
-            buffer = events.pop() || '';
-
-            for (const rawEvent of events) {
-              const line = rawEvent.trim();
-              if (!line.startsWith('data: ')) continue;
-              const jsonStr = line.slice(6);
-
-              let evt: any;
-              try {
-                evt = JSON.parse(jsonStr);
-              } catch (parseErr) {
-                console.warn('Could not parse SSE event:', parseErr);
-                continue;
-              }
-              // Ownership filter: a superseded compile's late events are
-              // dropped by id. An event without compileId (stale server)
-              // is honored only while this compile still owns the stream.
-              if (evt.compileId && evt.compileId !== compileId) continue;
-              if (!evt.compileId && activeCompileIdRef.current !== compileId) continue;
-              {
-                // Server-sent events below; server `error` throws propagate
-                // instead of being misreported as parse failures.
-
-                if (evt.type === 'agent_round') {
-                  setProgress((prev) => ({
-                    ...prev,
-                    step: 'agentic_exploring',
-                    currentRound: evt.round,
-                    message: evt.message,
-                  }));
-                } else if (evt.type === 'agent_inspect') {
-                  setProgress((prev) => ({
-                    ...prev,
-                    step: 'agentic_exploring',
-                    message: `Round ${evt.round}: Investigating ${evt.paths.length} suspect files...`,
-                    activePaths: evt.paths,
-                  }));
-                } else if (evt.type === 'agent_files_loaded') {
-                  if (evt.step) {
-                    currentTrail.push(evt.step);
-                  }
-                  investigatedCount = evt.totalInvestigated || investigatedCount;
-                  setProgress((prev) => ({
-                    ...prev,
-                    explorationTrail: [...currentTrail],
-                    loadedFiles: investigatedCount,
-                  }));
-                } else if (evt.type === 'compiling_start') {
-                  modelUsed = evt.model || modelUsed;
-                  fallbackPass = evt.pass || fallbackPass;
-                  if (evt.detectedFramework) serverFramework = evt.detectedFramework;
-                  if (evt.inputTokens) {
-                    serverInputTokens = evt.inputTokens;
-                  }
-                  const initialCost = calculateModelCost(
-                    modelUsed || 'gemini-3.8-flash',
-                    serverInputTokens,
-                    50
-                  );
-                  setProgress((prev) => ({
-                    ...prev,
-                    step: 'compiling_prompt',
-                    message: `Synthesizing Antigravity prompt from ${investigatedCount} locked context files...`,
-                    explorationTrail: [...currentTrail],
-                    inputTokens: serverInputTokens,
-                    costDetails: initialCost,
-                  }));
-                } else if (evt.type === 'thinking_start') {
-                  serverThinkingLevel = normalizeThinkingLevel(
-                    evt.thinkingLevel,
-                    requestThinkingLevel
-                  );
-                  setProgress((prev) => ({
-                    ...prev,
-                    step: 'compiling_prompt',
-                    message: evt.message || 'Model thinking in progress...',
-                    thinkingContent: '',
-                    thinkingLevel: serverThinkingLevel,
-                  }));
-                } else if (evt.type === 'thinking_chunk') {
-                  accumulatedThinking += evt.text || '';
-                  setProgress((prev) => ({
-                    ...prev,
-                    thinkingContent: accumulatedThinking,
-                  }));
-                } else if (evt.type === 'thinking_end') {
-                  setProgress((prev) => ({
-                    ...prev,
-                    message: 'Model reasoning complete. Streaming compiled prompt...',
-                  }));
-                } else if (evt.type === 'prompt_chunk') {
-                  const incomingText = evt.text || '';
-                  // replaceAssistantContent pattern: skip the whole update
-                  // when the delta is one we already hold (resend), so
-                  // content length grows strictly monotonically.
-                  if (isDuplicateDelta(accumulatedContent, incomingText)) {
-                    continue;
-                  }
-                  accumulatedContent += incomingText;
-                  const cleanDisplayPrompt = extractSuggestedRefactors(accumulatedContent).cleanPrompt;
-                  const currentOutputTokens = Math.max(1, Math.ceil(accumulatedContent.length / 4));
-                  const dynamicCost = calculateModelCost(
-                    modelUsed || 'gemini-3.8-flash',
-                    serverInputTokens,
-                    currentOutputTokens
-                  );
-                  finalCostDetails = dynamicCost;
-
-                  setProgress((prev) => ({
-                    ...prev,
-                    outputTokens: currentOutputTokens,
-                    costDetails: dynamicCost,
-                  }));
-
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMsgId
-                        ? {
-                            ...m,
-                            content: cleanDisplayPrompt,
-                            thinkingContent: accumulatedThinking || undefined,
-                            thinkingLevel: serverThinkingLevel,
-                            costDetails: dynamicCost,
-                            snapshotMeta: {
-                              ...m.snapshotMeta!,
-                              filesCount: investigatedCount,
-                              tokensCount: serverInputTokens,
-                              inputTokensCount: serverInputTokens,
-                              outputTokensCount: currentOutputTokens,
-                              modelUsed,
-                              fallbackPass,
-                              mode: 'agentic' as const,
-                              explorationTrail: currentTrail,
-                              thinkingContent: accumulatedThinking || undefined,
-                              thinkingLevel: serverThinkingLevel,
-                              costDetails: dynamicCost,
-                              inputTokens: serverInputTokens,
-                              outputTokens: currentOutputTokens,
-                              totalCostUsd: dynamicCost.totalCostUsd,
-                              modelPricing: resolveModelPricing(modelUsed || dynamicCost.modelName),
-                            },
-                          }
-                        : m
-                    )
-                  );
-                } else if (evt.type === 'suggested_refactors') {
-                  const refactors = evt.refactors || [];
-                  const cleanText = evt.cleanPrompt || extractSuggestedRefactors(accumulatedContent).cleanPrompt;
-                  accumulatedContent = cleanText;
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMsgId
-                        ? {
-                            ...m,
-                            content: cleanText,
-                            suggestedRefactors: refactors.length > 0 ? refactors : undefined,
-                            snapshotMeta: {
-                              ...m.snapshotMeta!,
-                              suggestedRefactors: refactors.length > 0 ? refactors : undefined,
-                            },
-                          }
-                        : m
-                    )
-                  );
-                } else if (evt.type === 'done') {
-                  modelUsed = evt.model || modelUsed;
-                  fallbackPass = evt.pass || fallbackPass;
-                  if (evt.detectedFramework) serverFramework = evt.detectedFramework;
-                  if (evt.inputTokens) serverInputTokens = evt.inputTokens;
-                  const finalCleanText = evt.cleanContent || extractSuggestedRefactors(accumulatedContent).cleanPrompt;
-                  accumulatedContent = finalCleanText;
-                  if (evt.suggestedRefactors && Array.isArray(evt.suggestedRefactors)) {
-                    const refactors = evt.suggestedRefactors;
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === assistantMsgId
-                          ? {
-                              ...m,
-                              content: finalCleanText,
-                              suggestedRefactors: refactors.length > 0 ? refactors : undefined,
-                              snapshotMeta: {
-                                ...m.snapshotMeta!,
-                                suggestedRefactors: refactors.length > 0 ? refactors : undefined,
-                              },
-                            }
-                          : m
-                      )
-                    );
-                  }
-                  const finalOutputTokens =
-                    evt.outputTokens || Math.max(1, Math.ceil(accumulatedContent.length / 4));
-                  if (evt.costDetails) {
-                    finalCostDetails = evt.costDetails;
-                  } else {
-                    finalCostDetails = calculateModelCost(
-                      modelUsed || 'gemini-3.8-flash',
-                      serverInputTokens,
-                      finalOutputTokens
-                    );
-                  }
-                  if (evt.investigatedFiles && Array.isArray(evt.investigatedFiles)) {
-                    investigatedFiles = evt.investigatedFiles;
-                  }
-                } else if (evt.type === 'error') {
-                  const serverError =
-                    typeof evt.error === 'string' && evt.error.length > 0
-                      ? evt.error
-                      : 'Agentic exploration failed';
-                  const serverDetails =
-                    typeof evt.details === 'string' && evt.details.length > 0
-                      ? `\n\nProvider details:\n${evt.details}`
-                      : '';
-                  console.error('Compile stream server error:', serverError, serverDetails);
-                  throw new Error(`${serverError}${serverDetails}`);
-                }
-              }
-            }
-          }
-
-          const { cleanPrompt: finalCleanContent, refactors: finalParsedRefactors } = extractSuggestedRefactors(accumulatedContent);
-          accumulatedContent = finalCleanContent;
-
-          const finalTokensCount = Math.max(1, Math.ceil(accumulatedContent.length / 4));
-          const calculatedCost =
-            finalCostDetails ||
-            calculateModelCost(
-              modelUsed || 'gemini-3.8-flash',
-              serverInputTokens,
-              finalTokensCount
-            );
-
-          // Persist framework classification (server-detected preferred, live fallback)
-          const snapshotFramework: DetectedFramework =
-            serverFramework === 'hono' || serverFramework === 'nextjs' || serverFramework === 'unknown'
-              ? serverFramework
-              : detectRepositoryFramework(
-                  activeFiles.length > 0 ? activeFiles : downloadedInvestigated,
-                  allBlobPaths
-                );
-
-          // Save Snapshot with complete cost metrics and cached activeFiles
-          const agentSnapshot: IngestionSnapshot = {
-            owner: repo.owner,
-            repo: repo.repo,
-            branch: repo.branch,
-            detectedFramework: snapshotFramework,
-            commitSha,
-            totalTreeBlobs: allBlobPaths.length,
-            includedFilesCount: activeFiles.length > 0 ? activeFiles.length : downloadedInvestigated.length,
-            estimatedTokens: serverInputTokens,
-            charCount: estimatedInputChars,
-            inputTokens: serverInputTokens,
-            outputTokens: finalTokensCount,
-            timestamp: Date.now(),
+          },
+          context: {
+            repoId: repo.id,
+            repoOwner: repo.owner,
+            repoName: repo.repo,
+            mode,
+            promptText,
             treeListing,
-            files: activeFiles.length > 0 ? activeFiles : downloadedInvestigated,
-            mode: 'agentic' as const,
-            explorationTrail: [explorationStepRecord],
+            allBlobPaths,
+            commitSha,
+            activeFiles,
+            downloadedInvestigated,
+            explorationStepRecord,
             toolTraces,
-            costDetails: calculatedCost,
-            totalCostUsd: calculatedCost.totalCostUsd,
-            modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
-            ...(validImages.length > 0
-              ? { imageCount: validImages.length, imageBytes: imageBytesTotal }
-              : {}),
-          };
-
-          saveSnapshot(repo.id, agentSnapshot);
-          onUpdateRepo(repo.id, { lastSyncedAt: Date.now(), detectedFramework: snapshotFramework });
-
-          // Functional finalization: build from latest state, not the
-          // stale closure captured before streaming. The exact array
-          // written to state is what gets persisted — state and storage
-          // can never diverge. (Same in-updater-save pattern as the
-          // error path below, which React runs at render time.)
-          setMessages((prev) => {
-            const finalMessages: ChatMessage[] = prev.map((m) =>
-              m.id === assistantMsgId
-                ? {
-                    ...m,
-                    content: finalCleanContent,
-                    thinkingContent: accumulatedThinking || undefined,
-                    thinkingLevel: serverThinkingLevel,
-                    costDetails: calculatedCost,
-                    suggestedRefactors: m.suggestedRefactors || (finalParsedRefactors.length > 0 ? finalParsedRefactors : undefined),
-                    snapshotMeta: {
-                      ...m.snapshotMeta!,
-                      filesCount: downloadedInvestigated.length,
-                      tokensCount: serverInputTokens,
-                      inputTokensCount: serverInputTokens,
-                      outputTokensCount: finalTokensCount,
-                      modelUsed,
-                      fallbackPass,
-                      mode: 'agentic' as const,
-                      explorationTrail: [explorationStepRecord],
-                      thinkingContent: accumulatedThinking || undefined,
-                      thinkingLevel: serverThinkingLevel,
-                      costDetails: calculatedCost,
-                      inputTokens: calculatedCost.inputTokens,
-                      outputTokens: calculatedCost.outputTokens,
-                      totalCostUsd: calculatedCost.totalCostUsd,
-                      modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
-                      suggestedRefactors: m.suggestedRefactors || (finalParsedRefactors.length > 0 ? finalParsedRefactors : undefined),
-                    },
-                  }
-                : m
-            );
-            saveMessages(repo.id, finalMessages);
-            return finalMessages;
-          });
-          // Ownership released only after the final write above.
-          activeCompileIdRef.current = null;
-          readerRef.current = null;
-          assistantIdRef.current = null;
-
-          // Automatically log expense into token cost records ledger / finance DB
-          try {
-            const FINANCE_STORAGE_KEY = 'nextjs_expert_token_records_v1';
-            const tokenRecord = {
-              id: `tok-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              repoName: `${repo.owner}/${repo.repo}`,
-              modelName: modelUsed || calculatedCost.modelName || 'gemini-4-argon',
-              inputTokens: calculatedCost.inputTokens,
-              outputTokens: calculatedCost.outputTokens,
-              cachedInputTokens: calculatedCost.cachedInputTokens ?? 0,
-              cachedInputCostUsd: calculatedCost.cachedInputCostUsd ?? 0,
-              totalCostUsd: calculatedCost.totalCostUsd,
-              date: new Date().toISOString().split('T')[0],
-              notes: `Prompt compilation (${mode} mode): "${promptText.slice(0, 50)}..."${validImages.length > 0 ? ` +${validImages.length} image${validImages.length === 1 ? '' : 's'}` : ''}`,
-              title: `${repo.owner}/${repo.repo} compilation`,
-              amount: calculatedCost.totalCostUsd,
-              category: modelUsed || calculatedCost.modelName || 'gemini-4-argon',
-              type: 'expense' as const,
-            };
-
-            const existingStored = localStorage.getItem(FINANCE_STORAGE_KEY);
-            let existingRecords = [];
-            if (existingStored) {
-              const parsed = JSON.parse(existingStored);
-              if (Array.isArray(parsed)) {
-                // Clean any legacy mock records as well
-                existingRecords = parsed.filter((r: any) => {
-                  if (!r.id) return false;
-                  const isLegacyMockId = /^tok-([1-9]|10)$/.test(r.id);
-                  const isLegacyMockRepo = ['facebook/react', 'vercel/next.js', 'tailwindlabs/tailwindcss', 'shadcn/ui', 'supabase/supabase'].includes(r.repoName) && r.date?.startsWith('2026-05-');
-                  return !(isLegacyMockId || isLegacyMockRepo);
-                });
-              }
-            }
-            const updatedLedger = [tokenRecord, ...existingRecords];
-            localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(updatedLedger));
-
-            // Also post to API route
-            fetch('/api/finance', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                repoName: `${repo.owner}/${repo.repo}`,
-                modelName: modelUsed || calculatedCost.modelName || 'gemini-4-argon',
-                inputTokens: calculatedCost.inputTokens,
-                outputTokens: calculatedCost.outputTokens,
-                cachedInputTokens: calculatedCost.cachedInputTokens ?? 0,
-                cachedInputCostUsd: calculatedCost.cachedInputCostUsd ?? 0,
-                totalCostUsd: calculatedCost.totalCostUsd,
-                date: new Date().toISOString().split('T')[0],
-                notes: `Prompt compilation (${mode} mode): "${promptText.slice(0, 50)}..."${validImages.length > 0 ? ` +${validImages.length} image${validImages.length === 1 ? '' : 's'}` : ''}`,
-              }),
-            }).catch(() => {});
-          } catch (autoLogError) {
-            console.warn('Failed to auto-log token expense:', autoLogError);
-          }
-
-          setProgress({
-            step: 'completed',
-            message: 'Compilation complete',
-            explorationTrail: [explorationStepRecord],
-            costDetails: calculatedCost,
-            inputTokens: calculatedCost.inputTokens,
-            outputTokens: calculatedCost.outputTokens,
-          });
+            estimatedInputChars,
+            validImages,
+            imageBytesTotal,
+            requestThinkingLevel,
+          },
+        });
 
       } catch (err: unknown) {
       // Superseded compiles (aborted by a newer submission, e.g. an
       // AbortError from reader.cancel()) exit silently: the new owner
       // already owns messages, progress, and refs.
-      if (activeCompileIdRef.current !== compileId) {
+      if (!isOwned(compileId)) {
         return;
       }
       console.error('Compilation failed:', err);
@@ -1046,215 +454,27 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
         message: 'Compilation failed',
         error: errMsg,
       });
-      activeCompileIdRef.current = null;
-      readerRef.current = null;
-      assistantIdRef.current = null;
+      release();
     }
   };
 
-  const getStatusBadge = () => {
-    switch (progress.step) {
-      case 'fetching_tree':
-      case 'downloading_files':
-        return (
-          <div className="flex items-center gap-1.5 text-sky-400 text-xs font-medium">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            <span>Fetching repo tree...</span>
-          </div>
-        );
-      case 'agentic_exploring':
-        return (
-          <div className="flex items-center gap-1.5 text-indigo-300 text-xs font-medium">
-            <Compass className="w-3.5 h-3.5 animate-spin" />
-            <span>Exploring (Round {progress.currentRound || 1})...</span>
-          </div>
-        );
-      case 'compiling_prompt':
-        return (
-          <div className="flex items-center gap-1.5 text-violet-300 text-xs font-medium">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            <span>Compiling prompt...</span>
-          </div>
-        );
-      case 'error':
-        return (
-          <div className="flex items-center gap-1.5 text-rose-400 text-xs font-medium">
-            <AlertCircle className="w-3.5 h-3.5" />
-            <span>Failed</span>
-          </div>
-        );
-      default:
-        return (
-          <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Ready</span>
-          </div>
-        );
-    }
-  };
 
   return (
     <div className="flex-1 flex flex-col min-h-0 h-[calc(100vh-3.75rem)]">
-      {/* Workspace Sub-Header */}
-      <div className="h-13 border-b border-white/[0.08] bg-[#07090e]/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between gap-4 flex-wrap">
-        {/* Left Zone: Hamburger Context Inspector Toggle + Repo & Branch Info */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIsDrawerOpen(!isDrawerOpen)}
-            className={`flex items-center justify-center p-2 rounded-lg border text-xs font-medium transition cursor-pointer ${
-              isDrawerOpen
-                ? 'bg-indigo-600/20 border-indigo-500/30 text-indigo-300'
-                : 'bg-slate-900 border-white/[0.08] text-slate-400 hover:text-white hover:border-white/20'
-            }`}
-            title="Toggle Context Inspector"
-            aria-label="Toggle Context Inspector Drawer"
-          >
-            <FolderTree className="w-4 h-4" />
-          </button>
-
-          <div className="flex items-center gap-2 text-xs">
-            <span className="font-mono text-slate-400">{repo.owner}/</span>
-            <span className="font-mono font-bold text-white text-sm">{repo.repo}</span>
-            <a
-              href={`https://github.com/${repo.owner}/${repo.repo}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-slate-500 hover:text-indigo-400 transition ml-0.5"
-              title="Open on GitHub"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
-
-          {/* Detected Framework Badge */}
-          {detectedFramework !== 'unknown' && (
-            <span
-              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-semibold ${
-                detectedFramework === 'hono'
-                  ? 'bg-orange-950/40 border-orange-500/25 text-orange-300'
-                  : 'bg-indigo-950/40 border-indigo-500/25 text-indigo-300'
-              }`}
-              title={`Detected framework: ${frameworkBadgeLabel(detectedFramework)}`}
-            >
-              <Layers className="w-3 h-3" />
-              {frameworkBadgeLabel(detectedFramework)}
-            </span>
-          )}
-
-          <span className="text-slate-700" aria-hidden="true">|</span>
-
-          {/* Branch Picker */}
-          <div className="relative flex items-center">
-            <GitBranch className="w-3.5 h-3.5 text-indigo-400 mr-1.5" />
-            <select
-              value={repo.branch}
-              onChange={(e) => handleBranchChange(e.target.value)}
-              disabled={isBranchLoading}
-              className="bg-slate-900 border border-white/[0.08] hover:border-white/20 text-slate-200 text-xs font-mono rounded-lg px-2.5 py-1 outline-none focus:border-indigo-500 transition cursor-pointer"
-            >
-              {branches.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* AST-Aware Incremental Delta Cache Status */}
-          <div
-            className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-white/[0.08] text-xs font-mono"
-            title={
-              snapshot?.commitSha
-                ? `IndexedDB Snapshot Commit SHA: ${snapshot.commitSha}\nCached Files in VFS: ${snapshot.files?.length || 0}`
-                : 'No cached snapshot in IndexedDB yet'
-            }
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-slate-400">Delta Cache:</span>
-            {deltaStatus === 'cached' && snapshot?.commitSha ? (
-              <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                {snapshot.commitSha.slice(0, 7)}
-              </span>
-            ) : deltaStatus === 'syncing' ? (
-              <span className="text-sky-400 flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Syncing...
-              </span>
-            ) : deltaStatus === 'checking' ? (
-              <span className="text-slate-400 flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Checking...
-              </span>
-            ) : snapshot?.commitSha ? (
-              <span className="text-slate-300">{snapshot.commitSha.slice(0, 7)}</span>
-            ) : (
-              <span className="text-slate-500">Uncached</span>
-            )}
-          </div>
-        </div>
-
-        {/* Right Zone: Mode Switcher, Cost Badges & Status */}
-        <div className="flex items-center gap-3">
-          {/* Mode Switcher Segmented Control */}
-          <div className="flex items-center bg-slate-900/90 border border-white/[0.08] rounded-lg p-0.5 text-xs overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => handleToggleMode('agentic')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition whitespace-nowrap ${
-                mode === 'agentic'
-                  ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Prompt: Agentic Sequential Exploration & Compilation"
-            >
-              <Compass className="w-3 h-3" />
-              <span>Prompt</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleToggleMode('idea')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition whitespace-nowrap ${
-                mode === 'idea'
-                  ? 'bg-amber-600 text-white font-medium shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Ideas: Generates 77 ideas ranked by RICE & VRIN-EO"
-            >
-              <Sparkles className="w-3 h-3" />
-              <span>Ideas</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleToggleMode('btw')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition whitespace-nowrap ${
-                mode === 'btw'
-                  ? 'bg-emerald-600 text-white font-medium shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="BTW: Direct conversational codebase answers with @[/path] citations"
-            >
-              <HelpCircle className="w-3 h-3" />
-              <span>BTW</span>
-            </button>
-          </div>
-
-          {/* Dynamic API Cost Indicator */}
-          {snapshot?.costDetails && (
-            <div
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/20 text-emerald-300 font-mono text-xs shadow-sm cursor-help"
-              title={`Latest Snapshot API Cost: ${formatCostUsd(snapshot.costDetails.totalCostUsd)}\n• Model: ${snapshot.costDetails.modelName}\n• Input: ${snapshot.costDetails.inputTokens.toLocaleString()} tokens ($${snapshot.costDetails.inputCostUsd.toFixed(6)})\n• Output: ${snapshot.costDetails.outputTokens.toLocaleString()} tokens ($${snapshot.costDetails.outputCostUsd.toFixed(6)})${(snapshot.costDetails.cachedInputTokens ?? 0) > 0 ? `\n• Cached input: ${(snapshot.costDetails.cachedInputTokens ?? 0).toLocaleString()} tokens ($${(snapshot.costDetails.cachedInputCostUsd ?? 0).toFixed(6)})` : ''}`}
-            >
-              <Coins className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-              <span className="font-semibold text-emerald-300 tabular-nums">
-                {formatCostUsd(snapshot.costDetails.totalCostUsd)}
-              </span>
-            </div>
-          )}
-
-          {getStatusBadge()}
-        </div>
-      </div>
+      <WorkspaceHeader
+        repo={repo}
+        branches={branches}
+        isBranchLoading={isBranchLoading}
+        detectedFramework={detectedFramework}
+        snapshot={snapshot}
+        deltaStatus={deltaStatus}
+        mode={mode}
+        progress={progress}
+        isDrawerOpen={isDrawerOpen}
+        onToggleDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
+        onBranchChange={handleBranchChange}
+        onToggleMode={handleToggleMode}
+      />
 
       {/* Main Workspace Body */}
       <div className="flex-1 flex min-h-0 relative">

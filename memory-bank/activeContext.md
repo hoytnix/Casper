@@ -1,6 +1,44 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Strategic Refactoring roadmap COMPLETE — all 7 units done, gates green each unit, no runtime contract change:
+- Unit 7 (`components/ContextInspector.tsx` 477 → 211 lines): **new `/components/InspectorFileList.tsx` (185)** (file search + sized list + `InspectorExcludes` always-visible section), **`/components/InspectorCodeGraph.tsx` (96)** (symbol search + cards; symbols computed once in shell), **`/components/InspectorUnixTrace.tsx` (72)** (collapsible trace log, null when empty). Shell keeps header, tabs, cost metrics bar, composition. Fixed a JSX comment-placement parse error in the moved list.
+- Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green.
+Unit 6 of the 7-file Strategic Refactoring roadmap DONE (`components/FinanceWorkspace.tsx` 519 → 191 lines):
+- **New `/components/FinanceTrendChart.tsx` (185)**: KPI cards + spending chart; breakdown arrives as `children` so the analytics grid DOM is intact.
+- **New `/components/FinanceModelBreakdown.tsx` (64)** + **`/components/FinanceLedgerTable.tsx` (174)**: proportion bars; filter controls + records table + delete.
+- **Workspace keeps**: ledger state, storage effects, delete/clear handlers, summary memo, banner, modal. Dropped 7 unused icon imports.
+- Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green.
+Unit 5 of the 7-file Strategic Refactoring roadmap DONE (`hooks/useRepoStore.ts` 598 → 358 lines):
+- **New `/lib/chat-storage.ts` (145)**: load sanitize + save format + quota-guarded persist (budget, strip-oldest, text-only fallback); never throws.
+- **New `/lib/settings-store.ts` (144)**: `DEFAULT_MODELS` + `DEFAULT_SETTINGS` (byte-verified via diff) + `normalizeStoredSettings`; hook re-exports `DEFAULT_MODELS` so `/settings` is untouched.
+- **Hook keeps**: React state bindings, repo CRUD, settings save, directives cache, snapshot IO. Caught + fixed a transcription drift in one pricing string during the move.
+- Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green.
+Unit 4 of the 7-file Strategic Refactoring roadmap DONE (`lib/local-context-router.ts` 960 → 463 lines):
+- **New `/lib/routers/qwen-mlc-router.ts` (279)**: MLC state + `ensureQwenEngine` + Tier 0 tool loop; owns the `CreateMLCEngine` import.
+- **New `/lib/routers/gemini-nano-router.ts` (291)**: Nano session state + availability + `ensureNanoSession` + Tier 1 clone loop; owns the Window decl.
+- **New `/lib/routers/arctic-embed-router.ts` (212)**: pipeline/embeddings state + `ensureArcticPipeline` + Tier 2 scoring; owns the transformers dynamic import + `cosineSimilarity`.
+- **Orchestrator keeps**: preference gating, warmup sequencing, Tier 3 keyword fallback, suggestion generation (A–D via engine getters), `checkGeminiNanoAvailability` re-export. Tier 0/1 dispatch duplication preserved verbatim intentionally (trace-shape risk if merged).
+- Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green.
+Unit 3 of the 7-file Strategic Refactoring roadmap DONE (`components/ChatCompiler.tsx` 877 → 336 lines):
+- **New `/hooks/useChatAttachments.ts` (101)**: capped Zod-validated ingest, paste interception, drop items, preview removal, submit reset.
+- **New `/components/SuggestedDirectivesGrid.tsx` (202)**: cache hydrate + background refresh + dismiss + skeletons + welcome hero.
+- **New `/components/ChatMessageItem.tsx` (393, over target by cohesion decision)**: bubble + accordions + thumbnails + refactors; owns `isHtmlCorrupted` + `MemoMarkdown` (INP optimization preserved).
+- **Compiler keeps**: input state, submit lock, stable list callbacks, scroll effect, StepLoader, input deck. No visual restyling (`bundled:taste` negative constraints respected — verbatim move).
+- Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors (same 2 intentional `<img>` warnings, one relocated with its markup), `pnpm build` green.
+Unit 2 of the 7-file Strategic Refactoring roadmap DONE (`components/RepoWorkspace.tsx` 1291 → 511 lines):
+- **New `/hooks/useRepoDeltaSync.ts` (218)**: on-open/branch background check (`verifyOnOpen`) + in-compile fast-forward (`prepareCompileFiles`) sharing one modified-file refresh; stable callbacks via `useEffect`-mirrored deps (render-time ref writes rejected by `react-hooks/refs` lint — fixed, no behavior change).
+- **New `/hooks/useCompileStream.ts` (603, over target by cohesion decision)**: owns the three ownership refs + `claimOwnership`/`isOwned`/`release` + full `runStream` (guards, SSE loop with compileId filter, functional finalization, snapshot persist, finance auto-log); throws to the workspace catch, which renders the notice.
+- **New `/components/WorkspaceHeader.tsx` (263)**: sub-header shell + status badge, pure presentational.
+- **Workspace keeps**: state, mount/prewarm effect, tree fetch, delta+router prep, placeholder insert, fetch-body build, error-notice catch. Dropped dead `assembleRepositoryContextPayload` import + write-only `deltaFetched`.
+- Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors (2 pre-existing `<img>` warnings), `pnpm build` green. Live compile check still pending (Units 1–2).
+Unit 1 of the 7-file Strategic Refactoring roadmap DONE (`app/api/compile/route.ts` 1091 → 373 lines, thinnest HTTP boundary):
+- **New `/lib/prompt-templates.ts` (233)**: 7 system-instruction constants moved byte-identical (drift-probed) + `selectSystemInstruction`/`buildFocusedContextSnapshot`/`buildFinalPromptPayload` builders + `inspectFilesToolDeclaration` + `DEFAULT_CASCADING_MODELS`; 4 `node:test` cases.
+- **New `/lib/agentic-exploration.ts` (282)**: true exploration protocol moved verbatim (seed → per-round/per-pass Gemini cascade over non-`muse-` subset → `functionCalls`/`candidates` read → fetch → trail → 25-file fallback) + `withTimeout`; DI for `fetchFilesOnDemand`/`normalizeRepoPath` (lib/github.ts unresolvable under plain node); 4 `node:test` cases on the real protocol.
+- **New `/lib/model-cascades.ts` (516, over target by cohesion decision)**: `streamMuseCompletionChunks` generator + `establishSynthesisStream` + `drainSynthesisStream`; owns `MUSE_API_BASE_URL`, `isMuseModelTag`, `withTimeout` import; `geminiCachedTokens` stays drain-local (establish contributes 0, as in source).
+- **Route keeps**: body validation, key gating, `compileId`, SSE envelope, token estimate, history/image prep, fail-branch sequencing. Zero moved-symbol references remain.
+- **Corrections made during cutover**: first exploration draft implemented a nonexistent DONE-protocol (rewritten from source reads); endpoint builders take base URL not model; builders are positional except snapshot; `.ts` (not `.js`) relative specifiers for node tests; test seed expectation fixed (seeded map suppresses fallback, as in source).
+- Verified: 105/105 `node:test` (8 new), `tsc` clean, `eslint` 0 errors (2 pre-existing `<img>` warnings), `pnpm build` green. Still needs a real compile + cancel manual check (SSE shape preserved by verbatim move, not yet exercised live).
 Fixed textarea INP block (5.4s handler-blocked UI) at both long-task sources:
 - **Paste decode (`/lib/image-attachments.ts`)**: was 3 full decodes per file (Image probe + `createImageBitmap` full-res + re-probe) plus full-res canvas upload and main-thread JPEG encode. Now single probe reused via `downscaleImageFile(file, knownDims?)`, decode-directly-at-size via `createImageBitmap` resize options (canvas-scale legacy fallback), shared `encodeBitmapToJpeg`/`closeBitmap` helpers, final dims derived deterministically. New pure `computeTargetSize()` + test.
 - **Ingest feedback (`/components/ChatCompiler.tsx`)**: `isProcessingImages` set synchronously + one-macrotask paint yield before heavy work so "Attaching…" lands first; submit (button + Cmd+Enter) blocked while processing.
