@@ -65,7 +65,7 @@ const MemoMarkdown = React.memo(function MemoMarkdown({ content }: { content: st
         },
         pre({ children }) {
           return (
-            <pre className="p-4 rounded-xl bg-[#06080e] border border-white/[0.08] overflow-x-auto text-xs font-mono text-slate-200 shadow-inner leading-[1.8] my-4">
+            <pre className="p-4 rounded-xl bg-[var(--theme-codebg)] border border-[var(--theme-border)] overflow-x-auto text-xs font-mono text-[var(--theme-text)] shadow-inner leading-[1.8] my-4">
               {children}
             </pre>
           );

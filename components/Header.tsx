@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Layers, Settings, Plus, ArrowLeft, Coins } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
+import { ThemeSwitcher } from './ThemeSwitcher';
 import { Repo } from '@/types';
 
 interface HeaderProps {
@@ -20,7 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   hasPat,
 }) => {
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-white/[0.08] bg-[#07090e]/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 w-full border-b border-[var(--theme-border)] bg-[var(--theme-bg)]/80 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-15 flex items-center justify-between gap-8">
         {/* Zone 1: Brand title, one line / Contextual Breadcrumb */}
         <div className="flex items-center gap-3 whitespace-nowrap shrink-0">
@@ -45,7 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex items-center gap-2.5 text-left group transition"
             >
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-500 to-indigo-600 p-[1px] shadow-sm flex items-center justify-center">
-                <div className="w-full h-full bg-[#0a0d14] rounded-[7px] flex items-center justify-center">
+                <div className="w-full h-full bg-[var(--theme-surface)] rounded-[7px] flex items-center justify-center">
                   <Layers className="w-4 h-4 text-sky-400 group-hover:scale-105 transition-transform" />
                 </div>
               </div>
@@ -70,6 +71,8 @@ export const Header: React.FC<HeaderProps> = ({
           </Link>
 
           <PWAInstallButton />
+
+          <ThemeSwitcher variant="compact" />
 
           <Link
             href="/settings"

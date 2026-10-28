@@ -217,3 +217,7 @@ Local-judge registry expansion DONE (uncommitted):
 - 10-card Settings registry live with Qwen3 0.6B int4 as default judge at short context 1536 (clamped 1024-2048); one generation model resident at a time with unload-on-switch; Gemma 3 270M BLOCKED/gated.
 - Verified green: 130/130 `node:test`, `tsc --noEmit`, `eslint` 0 errors, `pnpm build`.
 - Open: browser-side load + 4GB Chromebook RAM deltas unmeasured (no browser here) — do not claim FITS deltas until measured; per-model test steps are in the session final report.
+Theme Engine DONE (uncommitted):
+- 9-theme var system live, Deepsea default, FOUC script + provider, gallery in /settings, compact switcher in Header.
+- Verified: 135/135 node:test, tsc clean, eslint 0 errors, pnpm build green.
+- Open: browser-side paint/contrast/cross-tab checks unmeasured (no browser here); FinanceHeader stays Deepsea shell by scope decision.

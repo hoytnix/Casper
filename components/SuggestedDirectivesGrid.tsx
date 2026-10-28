@@ -109,7 +109,7 @@ export const SuggestedDirectivesGrid: React.FC<SuggestedDirectivesGridProps> = R
       {/* Visual Anchor: Architectural Geometric Core */}
       <div className="relative w-16 h-16 mx-auto flex items-center justify-center">
         <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-sky-500/20 to-indigo-500/20 blur-xl pointer-events-none" />
-        <div className="relative w-14 h-14 rounded-2xl border border-white/[0.1] bg-[#0b0f19] flex items-center justify-center shadow-lg shadow-indigo-950/50">
+        <div className="relative w-14 h-14 rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] flex items-center justify-center shadow-lg shadow-indigo-950/50">
           <Layers className="w-7 h-7 text-sky-400" />
         </div>
       </div>

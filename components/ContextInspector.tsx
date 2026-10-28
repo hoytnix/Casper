@@ -48,7 +48,7 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
 
   return (
     <aside
-      className={`fixed lg:static top-15 right-0 lg:right-auto bottom-0 z-30 transition-all duration-300 ease-in-out border-l lg:border-l-0 lg:border-r border-white/[0.08] bg-[#07090e]/95 lg:bg-[#07090e]/70 backdrop-blur-xl flex flex-col ${
+      className={`fixed lg:static top-15 right-0 lg:right-auto bottom-0 z-30 transition-all duration-300 ease-in-out border-l lg:border-l-0 lg:border-r border-[var(--theme-border)] bg-[var(--theme-bg)]/95 lg:bg-[var(--theme-bg)]/70 backdrop-blur-xl flex flex-col ${
         isOpen
           ? 'w-80 sm:w-96 translate-x-0'
           : 'w-0 -translate-x-full lg:translate-x-0 lg:w-0 overflow-hidden border-none'

@@ -23,6 +23,7 @@ import { checkGeminiNanoAvailability, warmUpLocalContextRouter } from '@/lib/loc
 import { nanoAvailabilityGuidance } from '@/lib/routers/gemini-nano-router';
 import { Header } from '@/components/Header';
 import { LocalModelCards } from '@/components/LocalModelCards';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { RouterEngineType, ModelConfig, ThinkingLevel, ThinkingSummaryMode, SearchContextSize } from '@/types';
 import { MUSE_THINKING_LEVELS, normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
 import { normalizeSearchContextSize, SEARCH_CONTEXT_SIZES } from '@/lib/search-grounding';
@@ -407,6 +408,23 @@ export default function SettingsPage() {
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Theme Engine: 9-theme gallery */}
+              <div className="glass-panel p-6 rounded-2xl border border-white/[0.08] space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-bold text-white flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-fuchsia-400" />
+                    Theme Engine
+                  </label>
+                  <span className="text-[10px] font-mono text-fuchsia-300 bg-fuchsia-500/10 px-2 py-0.5 rounded border border-fuchsia-500/20">
+                    9 themes
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Applies instantly across the app and persists in this browser. Deepsea is the default; stored choice wins after reload.
+                </p>
+                <ThemeSwitcher variant="gallery" />
               </div>
 
               {/* Local Model Registry: 10 verbose judge cards */}

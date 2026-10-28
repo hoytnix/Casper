@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
+import { ThemeProvider } from '@/components/ThemeProvider';
 import './globals.css';
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -54,12 +55,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark scroll-smooth">
+    <html lang="en" className="scroll-smooth" data-theme="deepsea" suppressHydrationWarning>
+      <head>
+        {/* FOUC-prevention: paint the stored theme before React hydrates. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var k='casper-theme-v1';var r=localStorage.getItem(k);var t='deepsea';if(r){var v=JSON.parse(r);if(['solarized-light','solarized-dark','monokai','deepsea','seahorse','forest','hacker','microsoft','apple'].indexOf(v)>=0)t=v;}document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=(t==='solarized-light'||t==='microsoft'||t==='apple')?'light':'dark';}catch(e){document.documentElement.dataset.theme='deepsea';}`,
+          }}
+        />
+      </head>
       <body
         suppressHydrationWarning
-        className={`${plusJakartaSans.variable} ${jetbrainsMono.variable} bg-[#07090e] text-slate-100 min-h-screen antialiased selection:bg-indigo-500/30 selection:text-indigo-200 font-sans`}
+        className={`${plusJakartaSans.variable} ${jetbrainsMono.variable} bg-[var(--theme-bg)] text-[var(--theme-text)] min-h-screen antialiased selection:bg-indigo-500/30 selection:text-indigo-200 font-sans`}
       >
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

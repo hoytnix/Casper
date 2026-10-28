@@ -4,39 +4,278 @@
 :root {
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Pre-hydration fallback = Deepsea tokens. Every theme block below
+     redefines the full set; no block may rely on :root alone. */
+  --theme-bg: #07090e;
+  --theme-surface: #0b0f17;
+  --theme-panel: #0f1522;
+  --theme-elevated: #141c2e;
+  --theme-text: #e2e8f0;
+  --theme-muted: #94a3b8;
+  --theme-accent: #6366f1;
+  --theme-accent2: #22d3ee;
+  --theme-border: rgba(255, 255, 255, 0.08);
+  --theme-codebg: #0b0f17;
+  --theme-success: #34d399;
+  --theme-warning: #fbbf24;
+  --theme-danger: #f87171;
+  color-scheme: dark;
+}
+
+html[data-theme="deepsea"] {
+  --theme-bg: #07090e;
+  --theme-surface: #0b0f17;
+  --theme-panel: #0f1522;
+  --theme-elevated: #141c2e;
+  --theme-text: #e2e8f0;
+  --theme-muted: #94a3b8;
+  --theme-accent: #6366f1;
+  --theme-accent2: #22d3ee;
+  --theme-border: rgba(255, 255, 255, 0.08);
+  --theme-codebg: #0b0f17;
+  --theme-success: #34d399;
+  --theme-warning: #fbbf24;
+  --theme-danger: #f87171;
+  color-scheme: dark;
+}
+
+html[data-theme="solarized-dark"] {
+  --theme-bg: #002b36;
+  --theme-surface: #073642;
+  --theme-panel: #0a3a46;
+  --theme-elevated: #0e4652;
+  --theme-text: #eee8d5;
+  --theme-muted: #93a1a1;
+  --theme-accent: #268bd2;
+  --theme-accent2: #2aa198;
+  --theme-border: rgba(238, 232, 213, 0.12);
+  --theme-codebg: #073642;
+  --theme-success: #859900;
+  --theme-warning: #b58900;
+  --theme-danger: #dc322f;
+  color-scheme: dark;
+}
+
+html[data-theme="solarized-light"] {
+  --theme-bg: #fdf6e3;
+  --theme-surface: #eee8d5;
+  --theme-panel: #ffffff;
+  --theme-elevated: #f7efda;
+  --theme-text: #657b83;
+  --theme-muted: #93a1a1;
+  --theme-accent: #268bd2;
+  --theme-accent2: #2aa198;
+  --theme-border: rgba(101, 123, 131, 0.18);
+  --theme-codebg: #eee8d5;
+  --theme-success: #728c00;
+  --theme-warning: #b58900;
+  --theme-danger: #dc322f;
+  color-scheme: light;
+}
+
+html[data-theme="monokai"] {
+  --theme-bg: #272822;
+  --theme-surface: #1e1f1c;
+  --theme-panel: #2e2f28;
+  --theme-elevated: #383a30;
+  --theme-text: #f8f8f2;
+  --theme-muted: #a59f85;
+  --theme-accent: #f92672;
+  --theme-accent2: #a6e22e;
+  --theme-border: rgba(248, 248, 242, 0.10);
+  --theme-codebg: #1e1f1c;
+  --theme-success: #a6e22e;
+  --theme-warning: #e6db74;
+  --theme-danger: #f92672;
+  color-scheme: dark;
+}
+
+html[data-theme="seahorse"] {
+  --theme-bg: #062a2e;
+  --theme-surface: #0a3a3f;
+  --theme-panel: #0e4a51;
+  --theme-elevated: #125862;
+  --theme-text: #e0f7f5;
+  --theme-muted: #8ec8c0;
+  --theme-accent: #2dd4bf;
+  --theme-accent2: #f59e0b;
+  --theme-border: rgba(224, 247, 245, 0.10);
+  --theme-codebg: #0a3a3f;
+  --theme-success: #34d399;
+  --theme-warning: #fbbf24;
+  --theme-danger: #fb7185;
+  color-scheme: dark;
+}
+
+html[data-theme="forest"] {
+  --theme-bg: #0a1a0f;
+  --theme-surface: #0f2416;
+  --theme-panel: #14301d;
+  --theme-elevated: #1a3d25;
+  --theme-text: #e8f5e9;
+  --theme-muted: #a5c4a8;
+  --theme-accent: #4caf50;
+  --theme-accent2: #8bc34a;
+  --theme-border: rgba(232, 245, 233, 0.10);
+  --theme-codebg: #0f2416;
+  --theme-success: #4caf50;
+  --theme-warning: #ffb300;
+  --theme-danger: #e57373;
+  color-scheme: dark;
+}
+
+html[data-theme="hacker"] {
+  --theme-bg: #000000;
+  --theme-surface: #0a0a0a;
+  --theme-panel: #0f0f0f;
+  --theme-elevated: #161616;
+  --theme-text: #00ff00;
+  --theme-muted: #00aa00;
+  --theme-accent: #00ff00;
+  --theme-accent2: #33ff33;
+  --theme-border: rgba(0, 255, 0, 0.18);
+  --theme-codebg: #050505;
+  --theme-success: #00ff00;
+  --theme-warning: #ffff00;
+  --theme-danger: #ff3333;
+  color-scheme: dark;
+}
+
+html[data-theme="microsoft"] {
+  --theme-bg: #f3f3f3;
+  --theme-surface: #ffffff;
+  --theme-panel: #ffffff;
+  --theme-elevated: #ececec;
+  --theme-text: #1b1a19;
+  --theme-muted: #605e5c;
+  --theme-accent: #0078d4;
+  --theme-accent2: #00b7c3;
+  --theme-border: rgba(27, 26, 25, 0.12);
+  --theme-codebg: #f3f3f3;
+  --theme-success: #107c10;
+  --theme-warning: #b45309;
+  --theme-danger: #d13438;
+  color-scheme: light;
+}
+
+html[data-theme="apple"] {
+  --theme-bg: #f5f5f7;
+  --theme-surface: #ffffff;
+  --theme-panel: #ffffff;
+  --theme-elevated: #ececf0;
+  --theme-text: #1d1d1f;
+  --theme-muted: #6e6e73;
+  --theme-accent: #0071e3;
+  --theme-accent2: #a259ff;
+  --theme-border: rgba(29, 29, 31, 0.10);
+  --theme-codebg: #f5f5f7;
+  --theme-success: #15803d;
+  --theme-warning: #b45309;
+  --theme-danger: #d70015;
+  color-scheme: light;
+}
+
+html {
+  background: var(--theme-bg);
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #07090e;
-  color: #f1f5f9;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+}
+
+/* Form controls follow the theme color scheme (light themes must not
+   render dark date pickers, dropdowns, or scrollbars). */
+input, select, textarea, button {
+  color-scheme: inherit;
 }
 
 code, kbd, samp, pre, .font-mono {
   font-family: var(--font-mono);
 }
 
+/* Light-theme readability: unlayered rules beat Tailwind's layered
+   utilities, so dark-assumed slate/white classes remap to theme vars
+   without touching every component. Dark themes keep utilities verbatim. */
+html[data-theme="solarized-light"] .text-white,
+html[data-theme="microsoft"] .text-white,
+html[data-theme="apple"] .text-white,
+html[data-theme="solarized-light"] .text-slate-100,
+html[data-theme="microsoft"] .text-slate-100,
+html[data-theme="apple"] .text-slate-100,
+html[data-theme="solarized-light"] .text-slate-200,
+html[data-theme="microsoft"] .text-slate-200,
+html[data-theme="apple"] .text-slate-200 {
+  color: var(--theme-text);
+}
+
+html[data-theme="solarized-light"] .text-slate-300,
+html[data-theme="microsoft"] .text-slate-300,
+html[data-theme="apple"] .text-slate-300,
+html[data-theme="solarized-light"] .text-slate-400,
+html[data-theme="microsoft"] .text-slate-400,
+html[data-theme="apple"] .text-slate-400,
+html[data-theme="solarized-light"] .text-slate-500,
+html[data-theme="microsoft"] .text-slate-500,
+html[data-theme="apple"] .text-slate-500 {
+  color: var(--theme-muted);
+}
+
+/* Substring-attribute rules catch every slate opacity variant
+   (bg-slate-900/70, bg-slate-950/60, ...) in one pass, translucency
+   preserved via color-mix. Unlayered, so they beat layered utilities. */
+html[data-theme="solarized-light"] [class*="bg-slate-900"],
+html[data-theme="microsoft"] [class*="bg-slate-900"],
+html[data-theme="apple"] [class*="bg-slate-900"],
+html[data-theme="solarized-light"] [class*="bg-slate-950"],
+html[data-theme="microsoft"] [class*="bg-slate-950"],
+html[data-theme="apple"] [class*="bg-slate-950"] {
+  background-color: color-mix(in srgb, var(--theme-surface) 88%, transparent);
+}
+
+html[data-theme="solarized-light"] [class*="bg-slate-800"],
+html[data-theme="microsoft"] [class*="bg-slate-800"],
+html[data-theme="apple"] [class*="bg-slate-800"] {
+  background-color: color-mix(in srgb, var(--theme-elevated) 88%, transparent);
+}
+
+html[data-theme="solarized-light"] [class*="border-slate-"],
+html[data-theme="microsoft"] [class*="border-slate-"],
+html[data-theme="apple"] [class*="border-slate-"] {
+  border-color: var(--theme-border);
+}
+
+html[data-theme="solarized-light"] .placeholder-slate-500::placeholder,
+html[data-theme="microsoft"] .placeholder-slate-500::placeholder,
+html[data-theme="apple"] .placeholder-slate-500::placeholder,
+html[data-theme="solarized-light"] .placeholder-slate-600::placeholder,
+html[data-theme="microsoft"] .placeholder-slate-600::placeholder,
+html[data-theme="apple"] .placeholder-slate-600::placeholder {
+  color: var(--theme-muted);
+}
+
 @layer utilities {
   .glass-panel {
-    background: rgba(13, 18, 30, 0.72);
+    background: color-mix(in srgb, var(--theme-panel) 88%, transparent);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--theme-border);
   }
 
   .glass-panel-elevated {
-    background: rgba(18, 24, 38, 0.85);
+    background: color-mix(in srgb, var(--theme-elevated) 92%, transparent);
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--theme-border);
   }
 
   .hairline-border {
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--theme-border);
   }
 
   .subtle-ring {
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 1px var(--theme-border);
   }
 
   .text-balance {
@@ -61,4 +300,16 @@ code, kbd, samp, pre, .font-mono {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.4);
+}
+
+html[data-theme="solarized-light"] ::-webkit-scrollbar-thumb,
+html[data-theme="microsoft"] ::-webkit-scrollbar-thumb,
+html[data-theme="apple"] ::-webkit-scrollbar-thumb {
+  background: rgba(101, 123, 131, 0.28);
+}
+
+html[data-theme="solarized-light"] ::-webkit-scrollbar-thumb:hover,
+html[data-theme="microsoft"] ::-webkit-scrollbar-thumb:hover,
+html[data-theme="apple"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(101, 123, 131, 0.48);
 }

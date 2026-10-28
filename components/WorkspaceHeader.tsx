@@ -103,7 +103,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
   };
 
   return (
-    <div className="h-13 border-b border-white/[0.08] bg-[#07090e]/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between gap-4 flex-wrap">
+    <div className="h-13 border-b border-[var(--theme-border)] bg-[var(--theme-bg)]/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between gap-4 flex-wrap">
       {/* Left Zone: Hamburger Context Inspector Toggle + Repo & Branch Info */}
       <div className="flex items-center gap-3">
         <button

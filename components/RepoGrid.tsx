@@ -85,7 +85,7 @@ export const RepoGrid: React.FC<RepoGridProps> = ({
 
           {/* Right Column: Architectural Monolith Interactive Visualization */}
           <div className="lg:col-span-5 relative flex items-center justify-center">
-            <div className="w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#0b0f1a]/80 p-5 shadow-2xl relative overflow-hidden">
+            <div className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-panel)]/80 p-5 shadow-2xl relative overflow-hidden">
               {/* Monolith Schematic Header */}
               <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/[0.06] text-xs">
                 <div className="flex items-center gap-2">
@@ -183,7 +183,7 @@ export const RepoGrid: React.FC<RepoGridProps> = ({
         {/* Add New Repo Tile */}
         <button
           onClick={onOpenAddModal}
-          className="rounded-2xl border-2 border-dashed border-white/[0.08] hover:border-indigo-500/50 bg-[#080c14]/40 hover:bg-slate-900/30 p-6 flex flex-col items-center justify-center text-center gap-3 transition-all duration-200 min-h-[220px] group cursor-pointer"
+          className="rounded-2xl border-2 border-dashed border-[var(--theme-border)] hover:border-indigo-500/50 bg-[var(--theme-codebg)]/40 hover:bg-[var(--theme-surface)]/30 p-6 flex flex-col items-center justify-center text-center gap-3 transition-all duration-200 min-h-[220px] group cursor-pointer"
         >
           <div className="w-12 h-12 rounded-xl bg-indigo-500/10 group-hover:bg-indigo-500/20 text-indigo-400 flex items-center justify-center transition-colors">
             <Plus className="w-6 h-6 group-hover:scale-110 transition-transform" />

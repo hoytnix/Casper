@@ -447,3 +447,6 @@ export type DirectiveGenerationStatus = 'idle' | 'generating' | 'ready' | 'fallb
 export type Transaction = TokenCostRecord;
 export type SpendingSummary = TokenCostSummary;
 
+// Canonical theme contracts (pure types, no cycles: theme.ts imports nothing)
+export * from './theme';
+

@@ -230,7 +230,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
   );
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#07090e]/60 overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0 bg-[var(--theme-bg)]/60 overflow-hidden">
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-6">
         {messages.length === 0 && (
@@ -255,7 +255,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
       </div>
 
       {/* Input Command Deck Bar */}
-      <div className="p-4 sm:p-5 border-t border-white/[0.08] bg-[#07090e]/90 backdrop-blur-xl">
+      <div className="p-4 sm:p-5 border-t border-[var(--theme-border)] bg-[var(--theme-bg)]/90 backdrop-blur-xl">
         <form
           onSubmit={handleSubmit}
           onDragOver={(e) => {
