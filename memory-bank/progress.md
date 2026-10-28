@@ -202,3 +202,22 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green. Field INP re-measurement needs a real browser run.
 - [x] **Homepage Rebrand to App Cartography Engine**: schematic header label + add-repo tile copy in `/components/RepoGrid.tsx`; logic byte-identical. Verified: `tsc` clean, `eslint` 0 errors, `pnpm build` green.
 - [x] **Homepage Narrative Broadened to Multi-Framework**: hero kicker/headline/paragraph/metadata + blueprint layers + card copy in `/components/RepoGrid.tsx` and `/components/RepoCard.tsx` (cards show detected-framework label); copy-only. Verified: `tsc` clean, `eslint` 0 errors (build skipped per user).
+- [x] **INP Render/Input-Delay Fix (chat, grids, finance, settings)**:
+  - Typing path: `ChatMessageItem` memoized (refactor extraction hoisted to `useMemo`), `SuggestedDirectivesGrid` + attachment strip memoized, conversation list `useMemo`, scroll effect rAF-coalesced on `progress.step` with `auto` behavior (`/components/ChatCompiler.tsx`, `/components/ChatMessageItem.tsx`, `/hooks/useChatAttachments.ts` stable remove).
+  - Filter-as-you-type: `useDeferredValue` + memos in `RepoGrid`/`RepoCard`, `FinanceWorkspace`/`FinanceLedgerTable`/`FinanceTrendChart`/`FinanceModelBreakdown`, `InspectorFileList`; new pure `filterFilesByQuery` cap helper (`/lib/filter-helpers.ts`, 4 `node:test` cases) bounding rendered file rows at 200 with a Showing-N-of-M notice.
+  - Settings: memoized `ModelWaterfall` with stable `useCallback` move/toggle/reset so credential inputs skip card re-renders (`/app/settings/page.tsx`).
+  - Workspace: latest-ref stable `onRetryPrompt`, mount warmup deferred to `requestIdleCallback` (1500ms fallback) with cancel on cleanup (`/components/RepoWorkspace.tsx`).
+  - Verified: 109/109 `node:test`, `tsc` clean, `eslint` 0 errors (2 pre-existing intentional `<img>` warnings). `pnpm build` superseded mid-run by user instruction (commit + push instead).
+- [x] **INP Keydown Fix (731ms body-level submit block)**:
+  - Root cause: submit keydown ran `formatMessagesForSave` regexes over the full history + multi-MB `JSON.stringify`/localStorage write synchronously before paint; the freeze provoked a second Enter press, doubling the block.
+  - `needsPromptFormatting()` fast-path probe + skip in `formatMessagesForSave` (byte-identical: output ≡ `trim()` with no refactors when no `---`/fence markers) (`/lib/chat-storage.ts`, `.ts`-specifier alignment to repo convention).
+  - Coalesced idle persistence: `schedulePersistChatMessages` (idle 2s backstop, macrotask fallback, sync fallback, injectable writer) + `cancelScheduledPersist` resurrection guards in delete/clear (`/hooks/useRepoStore.ts` keeps state sync, storage deferred).
+  - Regression: `/lib/chat-storage.test.ts` 7/7 (probe, fast-path equivalence, slow-path intact, coalescing, cancel).
+  - Verified: 116/116 `node:test` (11 new), `tsc` clean, `eslint` 0 errors. Committed + pushed as `6cfd1cc` per user instruction (build skipped).
+- [x] **Measured Cache Telemetry + Stable Prefix + Official Pricing**:
+  - Types (`/types/index.ts`): `estimatedInputTokens`/`measuredInputTokens`/`cachedInputTokens`/`cachedInputCostUsd`/`cacheHitRate` on `IngestionProgress`, `snapshotMeta`, `IngestionSnapshot`; `cacheHitRate?` on `ModelCostDetails`.
+  - Counting (`/lib/utils.ts`, `/lib/muse-stream.ts`): `extractGeminiPromptTokens`, `calculateCacheHitRate` (cached/measured, clamped [0,1], 0 when input 0), Muse alias shapes (`prompt_cache_hit_tokens`, `cached_input_tokens`) + `extractMuseUsagePromptTokens`, parser `measuredInputTokens` max-accumulation across chat/Responses/flush paths.
+  - Server (`/lib/model-cascades.ts`, `/app/api/compile/route.ts`, `/app/api/finance/route.ts`): drain prefers measured input (estimate fallback), `done` carries `estimatedInputTokens`/`measuredInputTokens`/`cachedInputTokens`/`cacheHitRate`; finance Zod refine cached ≤ input with 400 + clamped persist.
+  - Client/UI (`/hooks/useCompileStream.ts`, `/components/ContextInspector.tsx`, `/components/StepLoader.tsx`): estimate pre-stream, measured post-stream, single-final-array snapshot/ledger persistence, amber cached row only when > 0, "Not measured yet" zero-state.
+  - Official pricing: contributor $0.002/M, Muse $0.15/M, Argon $0.10/M ($0.20/M post-Nov-30), 3.6 Flash $0.75/$3.75/$0.075; settings display + tests updated.
+  - Verified: 77/77 focused `node:test` (10 new), `tsc` clean, `eslint` 0 errors, `pnpm build` green.

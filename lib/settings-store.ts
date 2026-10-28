@@ -44,8 +44,8 @@ export const DEFAULT_MODELS: ModelConfig[] = [
     description: 'Primary flagship high-throughput model',
     enabled: true,
     priority: 4,
-    inputPricing: '$1.35 per million tokens',
-    outputPricing: '$6.75 per million tokens',
+    inputPricing: '$0.75 per million tokens',
+    outputPricing: '$3.75 per million tokens',
   },
   {
     id: 'gemini-3.5-flash',

@@ -283,6 +283,7 @@ export async function POST(req: NextRequest) {
               pass: 1,
               trail: explorationTrail,
               inputTokens: estimatedInputTokens,
+              estimatedInputTokens,
               detectedFramework,
               historyTurns: historyTurns.length,
               ...(validImages.length > 0 ? { imageCount: validImages.length } : {}),

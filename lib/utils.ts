@@ -107,16 +107,16 @@ export function formatCompiledPrompt(content: string): string {
 
 /**
  * Dynamic Model Pricing Tiers ($ per 1 Million Tokens)
- * - Muse Spark 1.3 Contributor: $0.10/M input, $0.20/M output
- * - Muse Spark 1.3: $1.25/M input, $4.25/M output
- * - Gemini 4 Argon: $2.00/M input, $10.00/M output ($4/M & $20/M after Nov 30, 2026)
- * - Gemini 3.8 Flash: $0.75/M input, $3.75/M output
- * - Gemini 3.5 Flash: $1.50/M input, $9.00/M output
- * - Gemini 3.5 Flash-Lite: $0.30/M input, $2.50/M output
- * - Gemini 3.6 Flash: $1.35/M input, $6.75/M output
+ * - Muse Spark 1.3 Contributor: $0.10/M input, $0.20/M output, $0.002/M cached (98% off; trains models)
+ * - Muse Spark 1.3: $1.25/M input, $4.25/M output, $0.15/M cached (88% off; zero retention)
+ * - Gemini 4 Argon: $2.00/M input, $10.00/M output, $0.10/M cached implicit-only (95% off; $4/M & $20/M & $0.20/M cached after Nov 30, 2026)
+ * - Gemini 3.8 Flash: $0.75/M input, $3.75/M output, $0.075/M cached (90% off; promo doubles Jan 1, 2027)
+ * - Gemini 3.5 Flash: $1.50/M input, $9.00/M output, $0.15/M cached (90% off)
+ * - Gemini 3.5 Flash-Lite: $0.30/M input, $2.50/M output, $0.03/M cached (90% off)
+ * - Gemini 3.6 Flash: $0.75/M input, $3.75/M output, $0.075/M cached (90% off; promo doubles Jan 1, 2027)
  *
- * Cached input reads bill at `cachedInputCostPerMillion`. Repo convention: 10%
- * of the standard input rate per tier (mirrors the provider cached-read ratio).
+ * Cached input reads bill at `cachedInputCostPerMillion` — official
+ * per-tier cached rates, not a flat repo-wide ratio.
  */
 const isAfterNov30_2026 = typeof window !== 'undefined' || typeof process !== 'undefined'
   ? new Date() > new Date('2026-11-30T23:59:59Z')
@@ -126,19 +126,19 @@ export const MODEL_PRICING_TIERS: Record<string, ModelPricingTier> = {
   'muse-spark-1.3-contributor': {
     name: 'Muse Spark 1.3 Contributor',
     inputCostPerMillion: 0.10,
-    cachedInputCostPerMillion: 0.01,
+    cachedInputCostPerMillion: 0.002,
     outputCostPerMillion: 0.20,
   },
   'muse-spark-1.3': {
     name: 'Muse Spark 1.3',
     inputCostPerMillion: 1.25,
-    cachedInputCostPerMillion: 0.125,
+    cachedInputCostPerMillion: 0.15,
     outputCostPerMillion: 4.25,
   },
   'gemini-4-argon': {
     name: 'Gemini 4 Argon',
     inputCostPerMillion: isAfterNov30_2026 ? 4.00 : 2.00,
-    cachedInputCostPerMillion: isAfterNov30_2026 ? 0.40 : 0.20,
+    cachedInputCostPerMillion: isAfterNov30_2026 ? 0.20 : 0.10,
     outputCostPerMillion: isAfterNov30_2026 ? 20.00 : 10.00,
   },
   'gemini-3.8-flash': {
@@ -161,9 +161,9 @@ export const MODEL_PRICING_TIERS: Record<string, ModelPricingTier> = {
   },
   'gemini-3.6-flash': {
     name: 'Gemini 3.6 Flash',
-    inputCostPerMillion: 1.35,
-    cachedInputCostPerMillion: 0.135,
-    outputCostPerMillion: 6.75,
+    inputCostPerMillion: 0.75,
+    cachedInputCostPerMillion: 0.075,
+    outputCostPerMillion: 3.75,
   },
 };
 
@@ -222,6 +222,7 @@ export function calculateModelCost(
   outputTokens: number;
   cachedInputTokens: number;
   modelName: string;
+  cacheHitRate?: number;
 } {
   const pricing = resolveModelPricing(modelName);
   const safeInput = Math.max(0, Math.round(inputTokens || 0));
@@ -264,6 +265,36 @@ export function extractGeminiCachedTokens(chunk: unknown): number {
   const cached = (usage as Record<string, unknown>)['cachedContentTokenCount'];
   if (typeof cached !== 'number' || !Number.isFinite(cached) || cached <= 0) return 0;
   return Math.floor(cached);
+}
+
+/**
+ * Reads provider-measured prompt (input) tokens from a Gemini
+ * `GenerateContentResponse` chunk (`usageMetadata.promptTokenCount`).
+ * Returns 0 when the chunk carries no usage telemetry — absence stays
+ * honest zero, never a char/4 estimate.
+ */
+export function extractGeminiPromptTokens(chunk: unknown): number {
+  if (!chunk || typeof chunk !== 'object') return 0;
+  const usage = (chunk as Record<string, unknown>)['usageMetadata'];
+  if (!usage || typeof usage !== 'object') return 0;
+  const prompt = (usage as Record<string, unknown>)['promptTokenCount'];
+  if (typeof prompt !== 'number' || !Number.isFinite(prompt) || prompt <= 0) return 0;
+  return Math.floor(prompt);
+}
+
+/**
+ * Pure hit-rate helper: cachedInputTokens divided by measured inputTokens,
+ * clamped to [0, 1]. Returns 0 when inputTokens is 0. No rounding here;
+ * formatting lives in UI. Never divide by an estimate — callers must pass
+ * the measured input count as the denominator.
+ */
+export function calculateCacheHitRate(inputTokens: number, cachedInputTokens: number): number {
+  const safeInput = typeof inputTokens === 'number' && Number.isFinite(inputTokens) ? Math.max(0, Math.floor(inputTokens)) : 0;
+  if (safeInput <= 0) return 0;
+  const safeCached = typeof cachedInputTokens === 'number' && Number.isFinite(cachedInputTokens)
+    ? Math.max(0, Math.min(safeInput, Math.floor(cachedInputTokens)))
+    : 0;
+  return safeCached / safeInput;
 }
 
 /**

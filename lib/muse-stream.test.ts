@@ -10,6 +10,7 @@ import {
   extractMuseDeltaText,
   extractMuseResponsesDeltaText,
   extractMuseUsageCachedTokens,
+  extractMuseUsagePromptTokens,
   flushMuseResponsesStreamParser,
   flushMuseStreamParser,
   normalizeMuseResponsesEffort,
@@ -321,6 +322,30 @@ test('byte-split reads emit exactly once, matching whole reads', () => {
   const split = drive(byteSplit);
   assert.equal(whole.text, 'Hello world');
   assert.deepEqual(split, whole);
+});
+
+test('extractMuseUsageCachedTokens reads documented alias shapes', () => {
+  assert.equal(extractMuseUsageCachedTokens({ usage: { prompt_tokens_details: { prompt_cache_hit_tokens: 42 } } }), 42);
+  assert.equal(extractMuseUsageCachedTokens({ usage: { input_tokens_details: { cached_input_tokens: 43 } } }), 43);
+  assert.equal(extractMuseUsageCachedTokens({ usage: { prompt_cache_hit_tokens: 44 } }), 44);
+  assert.equal(extractMuseUsageCachedTokens({ usage: { cached_input_tokens: 45 } }), 45);
+});
+
+test('extractMuseUsagePromptTokens reads chat and responses shapes', () => {
+  assert.equal(extractMuseUsagePromptTokens({ usage: { prompt_tokens: 1000 } }), 1000);
+  assert.equal(extractMuseUsagePromptTokens({ response: { usage: { input_tokens: 800 } } }), 800);
+  assert.equal(extractMuseUsagePromptTokens({ choices: [] }), 0);
+});
+
+test('chat usage chunk records measured input alongside cached', () => {
+  const parser = createMuseStreamParser();
+  const payload =
+    deltaEvent('Hi') +
+    `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 1000, prompt_tokens_details: { cached_tokens: 400 } } })}\n\n` +
+    doneEvent;
+  pushMuseSseText(parser, payload);
+  assert.equal(parser.measuredInputTokens, 1000);
+  assert.equal(parser.cachedInputTokens, 400);
 });
 
 test('extractMuseUsageCachedTokens stays zero without usage telemetry', () => {

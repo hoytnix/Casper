@@ -3,17 +3,22 @@ import { TokenCostRecord, TokenCostSummary } from '@/types';
 import { z } from 'zod';
 import { calculateTokenCostSummary } from '@/lib/finance-calculations';
 
-const createTokenRecordSchema = z.object({
-  repoName: z.string().trim().min(1, 'Repository name is required'),
-  modelName: z.string().trim().min(1, 'Model name is required'),
-  inputTokens: z.coerce.number().nonnegative('Input tokens must be >= 0'),
-  outputTokens: z.coerce.number().nonnegative('Output tokens must be >= 0'),
-  cachedInputTokens: z.coerce.number().nonnegative().optional(),
-  cachedInputCostUsd: z.coerce.number().nonnegative().optional(),
-  totalCostUsd: z.coerce.number().nonnegative('Total cost must be >= 0'),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be formatted YYYY-MM-DD'),
-  notes: z.string().optional(),
-});
+const createTokenRecordSchema = z
+  .object({
+    repoName: z.string().trim().min(1, 'Repository name is required'),
+    modelName: z.string().trim().min(1, 'Model name is required'),
+    inputTokens: z.coerce.number().nonnegative('Input tokens must be >= 0'),
+    outputTokens: z.coerce.number().nonnegative('Output tokens must be >= 0'),
+    cachedInputTokens: z.coerce.number().nonnegative().optional(),
+    cachedInputCostUsd: z.coerce.number().nonnegative().optional(),
+    totalCostUsd: z.coerce.number().nonnegative('Total cost must be >= 0'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be formatted YYYY-MM-DD'),
+    notes: z.string().optional(),
+  })
+  .refine((v) => (v.cachedInputTokens ?? 0) <= v.inputTokens, {
+    message: 'cachedInputTokens must be in range 0 to inputTokens',
+    path: ['cachedInputTokens'],
+  });
 
 let mockTokenRecords: TokenCostRecord[] = [];
 
@@ -63,6 +68,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { repoName, modelName, inputTokens, outputTokens, cachedInputTokens, cachedInputCostUsd, totalCostUsd, date, notes } = parsed.data;
+    const safeCached = Math.max(0, Math.min(inputTokens, cachedInputTokens ?? 0));
+    const safeCachedCost = Math.max(0, cachedInputCostUsd ?? 0);
 
     const newRecord: TokenCostRecord = {
       id: `tok-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -70,8 +77,8 @@ export async function POST(req: NextRequest) {
       modelName,
       inputTokens,
       outputTokens,
-      cachedInputTokens,
-      cachedInputCostUsd,
+      cachedInputTokens: safeCached,
+      cachedInputCostUsd: safeCachedCost,
       totalCostUsd,
       date,
       notes,

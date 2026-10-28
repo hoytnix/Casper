@@ -23,10 +23,12 @@ export interface MuseStreamParser {
   received: string;
   /** Max cache-read input tokens observed in usage payloads (0 when absent). */
   cachedInputTokens: number;
+  /** Max provider-measured input tokens observed in usage payloads (0 when absent). */
+  measuredInputTokens: number;
 }
 
 export function createMuseStreamParser(): MuseStreamParser {
-  return { buffer: '', finished: false, chunksProduced: 0, received: '', cachedInputTokens: 0 };
+  return { buffer: '', finished: false, chunksProduced: 0, received: '', cachedInputTokens: 0, measuredInputTokens: 0 };
 }
 
 /**
@@ -50,16 +52,48 @@ export function extractMuseUsageCachedTokens(payload: unknown): number {
   for (const usage of candidates) {
     if (!usage || typeof usage !== 'object') continue;
     const u = usage as Record<string, unknown>;
-    const details = u['prompt_tokens_details'] ?? u['input_tokens_details'];
+    const details = (u['prompt_tokens_details'] ?? u['input_tokens_details']) as Record<string, unknown> | undefined;
     if (details && typeof details === 'object') {
-      const cached = (details as Record<string, unknown>)['cached_tokens'];
-      if (typeof cached === 'number' && Number.isFinite(cached) && cached > best) {
-        best = Math.floor(cached);
+      for (const key of ['cached_tokens', 'prompt_cache_hit_tokens', 'cached_input_tokens']) {
+        const cached = details[key];
+        if (typeof cached === 'number' && Number.isFinite(cached) && cached > best) {
+          best = Math.floor(cached);
+        }
       }
     }
-    const flat = u['cached_tokens'];
-    if (typeof flat === 'number' && Number.isFinite(flat) && flat > best) {
-      best = Math.floor(flat);
+    for (const key of ['cached_tokens', 'prompt_cache_hit_tokens', 'cached_input_tokens']) {
+      const flat = u[key];
+      if (typeof flat === 'number' && Number.isFinite(flat) && flat > best) {
+        best = Math.floor(flat);
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Reads provider-measured input tokens from an OpenAI-compatible usage
+ * payload. Chat path: `usage.prompt_tokens`. Responses path:
+ * `response.usage.input_tokens` (top-level `usage.input_tokens` tolerated).
+ * Returns the max observed value, 0 when no usage telemetry is present.
+ */
+export function extractMuseUsagePromptTokens(payload: unknown): number {
+  if (!payload || typeof payload !== 'object') return 0;
+  const root = payload as Record<string, unknown>;
+  const candidates: unknown[] = [root['usage']];
+  const response = root['response'];
+  if (response && typeof response === 'object') {
+    candidates.push((response as Record<string, unknown>)['usage']);
+  }
+  let best = 0;
+  for (const usage of candidates) {
+    if (!usage || typeof usage !== 'object') continue;
+    const u = usage as Record<string, unknown>;
+    for (const key of ['prompt_tokens', 'input_tokens']) {
+      const v = u[key];
+      if (typeof v === 'number' && Number.isFinite(v) && v > best) {
+        best = Math.floor(v);
+      }
     }
   }
   return best;
@@ -69,6 +103,10 @@ function noteParserUsage(parser: MuseStreamParser, payload: unknown): void {
   const found = extractMuseUsageCachedTokens(payload);
   if (found > (parser.cachedInputTokens ?? 0)) {
     parser.cachedInputTokens = found;
+  }
+  const measured = extractMuseUsagePromptTokens(payload);
+  if (measured > (parser.measuredInputTokens ?? 0)) {
+    parser.measuredInputTokens = measured;
   }
 }
 

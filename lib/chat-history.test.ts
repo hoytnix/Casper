@@ -93,6 +93,17 @@ test('non-array and malformed input yields empty history, never throws', () => {
   );
 });
 
+test('identical input ordering yields byte-identical history', () => {
+  const input = [
+    { role: 'user', content: 'First' },
+    { role: 'assistant', content: 'Answer one' },
+    { role: 'user', content: 'Follow-up' },
+  ] as const;
+  const a = normalizeConversationHistory(input as any);
+  const b = normalizeConversationHistory(JSON.parse(JSON.stringify(input)) as any);
+  assert.deepEqual(a, b);
+});
+
 test('Muse mapping preserves user and assistant roles', () => {
   const msgs = toMuseMessages([
     { role: 'user', content: 'Q' },

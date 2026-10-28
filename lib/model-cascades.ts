@@ -21,8 +21,10 @@ import {
 import type { CascadeAttemptFailure } from './cascade-failures.ts';
 import { withTimeout } from './agentic-exploration.ts';
 import {
+  calculateCacheHitRate,
   calculateModelCost,
   extractGeminiCachedTokens,
+  extractGeminiPromptTokens,
   extractSuggestedRefactors,
   isDuplicateDelta,
 } from './utils.ts';
@@ -55,8 +57,8 @@ async function* streamMuseCompletionChunks(args: {
   prompt: string;
   historyMessages?: { role: string; content: string }[];
   images?: { mimeType: string; data: string }[];
-  /** Out-param: filled with the parser's observed cache-read tokens on settle. */
-  usageCapture?: { cachedInputTokens: number };
+  /** Out-param: filled with the parser's observed usage telemetry on settle. */
+  usageCapture?: { cachedInputTokens: number; measuredInputTokens: number };
   temperature: number;
   timeoutMs: number;
   thinkingLevel?: string;
@@ -136,6 +138,7 @@ async function* streamMuseCompletionChunks(args: {
     // `finally` also covers the early `return` on parser finish above.
     if (args.usageCapture) {
       args.usageCapture.cachedInputTokens = parser.cachedInputTokens;
+      args.usageCapture.measuredInputTokens = parser.measuredInputTokens;
     }
   }
 }
@@ -172,7 +175,7 @@ export interface EstablishedStream {
   };
   streamModel: string;
   streamPass: number;
-  streamMuseUsage: { cachedInputTokens: number } | null;
+  streamMuseUsage: { cachedInputTokens: number; measuredInputTokens: number } | null;
 }
 
 export interface EstablishSynthesisResult {
@@ -212,7 +215,7 @@ export async function establishSynthesisStream(
   let streamResponse: EstablishedStream['streamResponse'] | null = null;
   let streamModel = '';
   let streamPass = 1;
-  let streamMuseUsage: { cachedInputTokens: number } | null = null;
+  let streamMuseUsage: { cachedInputTokens: number; measuredInputTokens: number } | null = null;
   const cascadeFailures: CascadeAttemptFailure[] = [];
 
   for (let pass = 1; pass <= 2 && !streamResponse; pass++) {
@@ -228,7 +231,7 @@ export async function establishSynthesisStream(
           continue;
         }
         try {
-          const museUsageCapture = { cachedInputTokens: 0 };
+          const museUsageCapture = { cachedInputTokens: 0, measuredInputTokens: 0 };
           const museIterator = streamMuseCompletionChunks({
             apiKey: museKey,
             model,
@@ -335,7 +338,7 @@ export interface DrainSynthesisInput {
   streamResponse: EstablishedStream['streamResponse'];
   streamModel: string;
   streamPass: number;
-  streamMuseUsage: { cachedInputTokens: number } | null;
+  streamMuseUsage: { cachedInputTokens: number; measuredInputTokens: number } | null;
   sendEvent: (eventData: Record<string, unknown>) => void;
   detectedFramework: string;
   exploredFilesList: SourceFile[];
@@ -409,15 +412,20 @@ export async function drainSynthesisStream(input: DrainSynthesisInput): Promise<
     sendEvent({ type: 'prompt_chunk', text: incomingText });
   };
 
+  let geminiMeasuredInputTokens = 0;
   const processChunkValue = (val: any) => {
     if (!val) return;
     // Gemini usage telemetry: accumulate the max observed
-    // `usageMetadata.cachedContentTokenCount` across chunks
-    // (present on reporting chunks, absent elsewhere).
+    // `usageMetadata.promptTokenCount` and `cachedContentTokenCount`
+    // across chunks (present on reporting chunks, absent elsewhere).
     // Muse-adapted chunks carry no usageMetadata — reads 0.
     const seenCached = extractGeminiCachedTokens(val);
     if (seenCached > geminiCachedTokens) {
       geminiCachedTokens = seenCached;
+    }
+    const seenPrompt = extractGeminiPromptTokens(val);
+    if (seenPrompt > geminiMeasuredInputTokens) {
+      geminiMeasuredInputTokens = seenPrompt;
     }
     const candidate = val.candidates?.[0];
     const parts = candidate?.content?.parts || [];
@@ -476,23 +484,30 @@ export async function drainSynthesisStream(input: DrainSynthesisInput): Promise<
   });
 
   const estimatedOutputTokens = Math.max(1, Math.ceil(cleanText.length / 4));
-  // Measured cache reads travel as the 4th arg (0 when the
-  // provider sent no usage telemetry — honest zero, not a bug).
-  // `calculateModelCost` clamps into [0, inputTokens] and bills
+  // Measured prompt + cache reads: prefer provider usage when present,
+  // fallback to the char/4 estimate only when telemetry is absent.
+  // `calculateModelCost` clamps cached into [0, inputTokens] and bills
   // the cached slice at the tier's discounted cached rate.
+  const observedMeasuredInput = isMuseModelTag(streamModel)
+    ? streamMuseUsage?.measuredInputTokens ?? 0
+    : geminiMeasuredInputTokens;
+  const measuredInputTokens = observedMeasuredInput > 0 ? observedMeasuredInput : 0;
+  const resolvedInputTokens = measuredInputTokens > 0 ? measuredInputTokens : estimatedInputTokens;
   const measuredCachedTokens = isMuseModelTag(streamModel)
     ? streamMuseUsage?.cachedInputTokens ?? 0
     : geminiCachedTokens;
-  const costCalculation = calculateModelCost(streamModel, estimatedInputTokens, estimatedOutputTokens, measuredCachedTokens);
+  const costCalculation = calculateModelCost(streamModel, resolvedInputTokens, estimatedOutputTokens, measuredCachedTokens);
+  const cacheHitRate = calculateCacheHitRate(costCalculation.inputTokens, costCalculation.cachedInputTokens);
   const costDetails = {
-    inputTokens: estimatedInputTokens,
-    outputTokens: estimatedOutputTokens,
+    inputTokens: costCalculation.inputTokens,
+    outputTokens: costCalculation.outputTokens,
     cachedInputTokens: costCalculation.cachedInputTokens,
     inputCostUsd: costCalculation.inputCostUsd,
     outputCostUsd: costCalculation.outputCostUsd,
     cachedInputCostUsd: costCalculation.cachedInputCostUsd,
     totalCostUsd: costCalculation.totalCostUsd,
     modelName: costCalculation.modelName,
+    cacheHitRate,
   };
 
   sendEvent({
@@ -507,8 +522,12 @@ export async function drainSynthesisStream(input: DrainSynthesisInput): Promise<
       content: f.content,
     })),
     trail: explorationTrail,
-    inputTokens: estimatedInputTokens,
+    inputTokens: costCalculation.inputTokens,
     outputTokens: estimatedOutputTokens,
+    estimatedInputTokens,
+    measuredInputTokens,
+    cachedInputTokens: costCalculation.cachedInputTokens,
+    cacheHitRate,
     costDetails,
     suggestedRefactors: refactors,
     cleanContent: cleanText,

@@ -84,6 +84,7 @@ export interface ModelCostDetails {
   cachedInputCostUsd?: number;
   totalCostUsd: number;
   modelName: string;
+  cacheHitRate?: number;
 }
 
 export interface IngestionSnapshot {
@@ -94,6 +95,11 @@ export interface IngestionSnapshot {
   totalTreeBlobs: number;
   includedFilesCount: number;
   estimatedTokens: number;
+  estimatedInputTokens?: number;
+  measuredInputTokens?: number;
+  cachedInputTokens?: number;
+  cachedInputCostUsd?: number;
+  cacheHitRate?: number;
   charCount: number;
   timestamp: number;
   treeListing: string;
@@ -171,6 +177,11 @@ export interface ChatMessage {
     tokensCount: number; // Represents Input Context Tokens
     inputTokensCount?: number;
     outputTokensCount?: number;
+    estimatedInputTokens?: number;
+    measuredInputTokens?: number;
+    cachedInputTokens?: number;
+    cachedInputCostUsd?: number;
+    cacheHitRate?: number;
     commitSha: string;
     branch: string;
     modelUsed?: string;
@@ -232,6 +243,11 @@ export interface IngestionProgress {
     | 'compiling_prompt'
     | 'completed'
     | 'error';
+  estimatedInputTokens?: number;
+  measuredInputTokens?: number;
+  cachedInputTokens?: number;
+  cachedInputCostUsd?: number;
+  cacheHitRate?: number;
   message: string;
   totalFiles?: number;
   loadedFiles?: number;

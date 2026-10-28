@@ -15,6 +15,7 @@ import type {
   ThinkingLevel,
 } from '@/types';
 import {
+  calculateCacheHitRate,
   calculateModelCost,
   extractSuggestedRefactors,
   isDuplicateDelta,
@@ -209,6 +210,10 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
     let accumulatedThinking = '';
     let serverThinkingLevel = requestThinkingLevel;
     let serverInputTokens = 3500;
+    let estimatedInputTokens = 3500;
+    let measuredInputTokens = 0;
+    let cachedInputTokens = 0;
+    let cacheHitRate = 0;
     let finalCostDetails: ModelCostDetails | null = null;
 
     while (true) {
@@ -268,7 +273,11 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
             modelUsed = evt.model || modelUsed;
             fallbackPass = evt.pass || fallbackPass;
             if (evt.detectedFramework) serverFramework = evt.detectedFramework;
-            if (evt.inputTokens) {
+            if (typeof evt.estimatedInputTokens === 'number') {
+              estimatedInputTokens = evt.estimatedInputTokens;
+              serverInputTokens = estimatedInputTokens;
+            } else if (evt.inputTokens) {
+              estimatedInputTokens = evt.inputTokens;
               serverInputTokens = evt.inputTokens;
             }
             const initialCost = calculateModelCost(
@@ -282,6 +291,7 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
               message: `Synthesizing Antigravity prompt from ${investigatedCount} locked context files...`,
               explorationTrail: [...currentTrail],
               inputTokens: serverInputTokens,
+              estimatedInputTokens,
               costDetails: initialCost,
             }));
           } else if (evt.type === 'thinking_start') {
@@ -346,6 +356,7 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
                         tokensCount: serverInputTokens,
                         inputTokensCount: serverInputTokens,
                         outputTokensCount: currentOutputTokens,
+                        estimatedInputTokens,
                         modelUsed,
                         fallbackPass,
                         mode: 'agentic' as const,
@@ -385,7 +396,10 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
             modelUsed = evt.model || modelUsed;
             fallbackPass = evt.pass || fallbackPass;
             if (evt.detectedFramework) serverFramework = evt.detectedFramework;
+            if (typeof evt.estimatedInputTokens === 'number') estimatedInputTokens = evt.estimatedInputTokens;
+            measuredInputTokens = typeof evt.measuredInputTokens === 'number' ? evt.measuredInputTokens : 0;
             if (evt.inputTokens) serverInputTokens = evt.inputTokens;
+            else if (measuredInputTokens > 0) serverInputTokens = measuredInputTokens;
             const finalCleanText = evt.cleanContent || extractSuggestedRefactors(accumulatedContent).cleanPrompt;
             accumulatedContent = finalCleanText;
             if (evt.suggestedRefactors && Array.isArray(evt.suggestedRefactors)) {
@@ -408,14 +422,28 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
             }
             const finalOutputTokens =
               evt.outputTokens || Math.max(1, Math.ceil(accumulatedContent.length / 4));
+            cachedInputTokens = typeof evt.cachedInputTokens === 'number'
+              ? evt.cachedInputTokens
+              : typeof evt.costDetails?.cachedInputTokens === 'number'
+                ? evt.costDetails.cachedInputTokens
+                : 0;
+            cacheHitRate = typeof evt.cacheHitRate === 'number'
+              ? evt.cacheHitRate
+              : calculateCacheHitRate(serverInputTokens, cachedInputTokens);
             if (evt.costDetails) {
-              finalCostDetails = evt.costDetails;
+              finalCostDetails = {
+                ...evt.costDetails,
+                cachedInputTokens: typeof evt.costDetails.cachedInputTokens === 'number' ? evt.costDetails.cachedInputTokens : cachedInputTokens,
+                cacheHitRate: typeof evt.costDetails.cacheHitRate === 'number' ? evt.costDetails.cacheHitRate : cacheHitRate,
+              };
             } else {
-              finalCostDetails = calculateModelCost(
+              const fallback = calculateModelCost(
                 modelUsed || 'gemini-3.8-flash',
                 serverInputTokens,
-                finalOutputTokens
+                finalOutputTokens,
+                cachedInputTokens
               );
+              finalCostDetails = { ...fallback, cacheHitRate };
             }
             if (evt.investigatedFiles && Array.isArray(evt.investigatedFiles)) {
               investigatedFiles = evt.investigatedFiles;
@@ -442,11 +470,15 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
     const finalTokensCount = Math.max(1, Math.ceil(accumulatedContent.length / 4));
     const calculatedCost =
       finalCostDetails ||
-      calculateModelCost(
-        modelUsed || 'gemini-3.8-flash',
-        serverInputTokens,
-        finalTokensCount
-      );
+      (() => {
+        const fallback = calculateModelCost(
+          modelUsed || 'gemini-3.8-flash',
+          serverInputTokens,
+          finalTokensCount,
+          cachedInputTokens
+        );
+        return { ...fallback, cacheHitRate: calculateCacheHitRate(fallback.inputTokens, fallback.cachedInputTokens) };
+      })();
 
     // Persist framework classification (server-detected preferred, live fallback)
     const snapshotFramework: DetectedFramework =
@@ -457,7 +489,12 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
             allBlobPaths
           );
 
-    // Save Snapshot with complete cost metrics and cached activeFiles
+    // Save Snapshot with complete cost metrics and cached activeFiles.
+    // estimatedTokens stays the pre-stream char/4 estimate for compat;
+    // inputTokens is the measured-or-estimate resolved count.
+    const snapshotCacheHit = typeof calculatedCost.cacheHitRate === 'number'
+      ? calculatedCost.cacheHitRate
+      : calculateCacheHitRate(calculatedCost.inputTokens, calculatedCost.cachedInputTokens ?? 0);
     const agentSnapshot: IngestionSnapshot = {
       owner: repoOwner,
       repo: repoName,
@@ -466,10 +503,15 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
       commitSha,
       totalTreeBlobs: allBlobPaths.length,
       includedFilesCount: activeFiles.length > 0 ? activeFiles.length : downloadedInvestigated.length,
-      estimatedTokens: serverInputTokens,
+      estimatedTokens: estimatedInputTokens,
+      estimatedInputTokens,
+      measuredInputTokens,
+      cachedInputTokens: calculatedCost.cachedInputTokens ?? 0,
+      cachedInputCostUsd: calculatedCost.cachedInputCostUsd ?? 0,
+      cacheHitRate: snapshotCacheHit,
       charCount: estimatedInputChars,
-      inputTokens: serverInputTokens,
-      outputTokens: finalTokensCount,
+      inputTokens: calculatedCost.inputTokens,
+      outputTokens: calculatedCost.outputTokens,
       timestamp: Date.now(),
       treeListing,
       files: activeFiles.length > 0 ? activeFiles : downloadedInvestigated,
@@ -505,9 +547,14 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
               snapshotMeta: {
                 ...m.snapshotMeta!,
                 filesCount: downloadedInvestigated.length,
-                tokensCount: serverInputTokens,
-                inputTokensCount: serverInputTokens,
-                outputTokensCount: finalTokensCount,
+                tokensCount: calculatedCost.inputTokens,
+                inputTokensCount: calculatedCost.inputTokens,
+                outputTokensCount: calculatedCost.outputTokens,
+                estimatedInputTokens,
+                measuredInputTokens,
+                cachedInputTokens: calculatedCost.cachedInputTokens ?? 0,
+                cachedInputCostUsd: calculatedCost.cachedInputCostUsd ?? 0,
+                cacheHitRate: snapshotCacheHit,
                 modelUsed,
                 fallbackPass,
                 mode: 'agentic' as const,
@@ -596,6 +643,11 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
       costDetails: calculatedCost,
       inputTokens: calculatedCost.inputTokens,
       outputTokens: calculatedCost.outputTokens,
+      estimatedInputTokens,
+      measuredInputTokens,
+      cachedInputTokens: calculatedCost.cachedInputTokens ?? 0,
+      cachedInputCostUsd: calculatedCost.cachedInputCostUsd ?? 0,
+      cacheHitRate: snapshotCacheHit,
     });
   }, []);
 

@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatCostUsd,
+  calculateCacheHitRate,
   calculateModelCost,
   resolveModelPricing,
   formatCompiledPrompt,
   extractGeminiCachedTokens,
+  extractGeminiPromptTokens,
   extractSuggestedRefactors,
   isDuplicateDelta,
   dedupeConsecutiveAssistantMessages,
@@ -119,10 +121,12 @@ test('extractSuggestedRefactors handles in-flight streaming partial delimiters w
   assert.equal(refactors.length, 0);
 });
 
-test('pricing tiers expose cached input rates at 10% of standard', () => {
-  assert.equal(resolveModelPricing('muse-spark-1.3-contributor').cachedInputCostPerMillion, 0.01);
-  assert.equal(resolveModelPricing('muse-spark-1.3').cachedInputCostPerMillion, 0.125);
+test('pricing tiers expose official per-tier cached input rates', () => {
+  assert.equal(resolveModelPricing('muse-spark-1.3-contributor').cachedInputCostPerMillion, 0.002);
+  assert.equal(resolveModelPricing('muse-spark-1.3').cachedInputCostPerMillion, 0.15);
   assert.equal(resolveModelPricing('gemini-3.5-flash-lite').cachedInputCostPerMillion, 0.03);
+  assert.equal(resolveModelPricing('gemini-3.6-flash').cachedInputCostPerMillion, 0.075);
+  assert.equal(resolveModelPricing('gemini-3.8-flash').cachedInputCostPerMillion, 0.075);
 });
 
 test('calculateModelCost defaults to zero cached tokens (legacy behavior preserved)', () => {
@@ -133,12 +137,12 @@ test('calculateModelCost defaults to zero cached tokens (legacy behavior preserv
 });
 
 test('calculateModelCost discounts cached input tokens at the cached rate', () => {
-  // 1M contributor input, 400k cached: 600k * $0.10 + 400k * $0.01 = $0.064 input
+  // 1M contributor input, 400k cached: 600k * $0.10 + 400k * $0.002 = $0.0608 input
   const cost = calculateModelCost('muse-spark-1.3-contributor', 1000000, 1000000, 400000);
   assert.equal(cost.cachedInputTokens, 400000);
-  assert.ok(Math.abs(cost.cachedInputCostUsd - 0.004) < 1e-9);
-  assert.ok(Math.abs(cost.inputCostUsd - 0.064) < 1e-9);
-  assert.ok(Math.abs(cost.totalCostUsd - 0.264) < 1e-9);
+  assert.ok(Math.abs(cost.cachedInputCostUsd - 0.0008) < 1e-9);
+  assert.ok(Math.abs(cost.inputCostUsd - 0.0608) < 1e-9);
+  assert.ok(Math.abs(cost.totalCostUsd - 0.2608) < 1e-9);
 });
 
 test('calculateModelCost clamps cached tokens to [0, inputTokens]', () => {
@@ -190,6 +194,21 @@ test('dedupeConsecutiveAssistantMessages drops fast identical assistant repeats'
   ] as any;
   const out = dedupeConsecutiveAssistantMessages(msgs);
   assert.deepEqual(out.map((m: any) => m.id), ['u1', 'a1', 'a3', 'a4']);
+});
+
+test('extractGeminiPromptTokens reads measured promptTokenCount', () => {
+  assert.equal(extractGeminiPromptTokens({ usageMetadata: { promptTokenCount: 1200 } }), 1200);
+  assert.equal(extractGeminiPromptTokens({ usageMetadata: {} }), 0);
+  assert.equal(extractGeminiPromptTokens({ candidates: [] }), 0);
+  assert.equal(extractGeminiPromptTokens(null), 0);
+});
+
+test('calculateCacheHitRate divides cached by measured input only', () => {
+  assert.equal(calculateCacheHitRate(0, 0), 0);
+  assert.equal(calculateCacheHitRate(0, 100), 0);
+  assert.equal(calculateCacheHitRate(1000, 250), 0.25);
+  assert.equal(calculateCacheHitRate(1000, 1500), 1);
+  assert.equal(calculateCacheHitRate(1000, -50), 0);
 });
 
 test('replaceAssistantContent swaps one message by id without touching others', () => {

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { IngestionSnapshot } from '@/types';
 import { buildNextJsCodeGraph, NextJsCodeGraph } from '@/lib/nextjs-code-graph';
-import { formatCostUsd, calculateModelCost } from '@/lib/utils';
+import { formatCostUsd, calculateCacheHitRate, calculateModelCost } from '@/lib/utils';
 import { InspectorFileList, InspectorExcludes } from './InspectorFileList';
 import { InspectorCodeGraph } from './InspectorCodeGraph';
 import { InspectorUnixTrace } from './InspectorUnixTrace';
@@ -185,6 +185,16 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
                 <div className="pt-1 border-t border-slate-800 flex items-center justify-between text-slate-300 text-[10px]">
                   <span>Tier:</span>
                   <span className="text-indigo-300 font-sans">{cost.modelName}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Hit Rate:</span>
+                  {cost.inputTokens > 0 ? (
+                    <span className="text-sky-300 font-semibold">
+                      {`${(((typeof cost.cacheHitRate === 'number' ? cost.cacheHitRate : calculateCacheHitRate(cost.inputTokens, cost.cachedInputTokens ?? 0)) * 100).toFixed(1))}%`}
+                    </span>
+                  ) : (
+                    <span className="text-slate-500">Not measured yet</span>
+                  )}
                 </div>
               </div>
             </div>

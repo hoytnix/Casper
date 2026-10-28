@@ -42,15 +42,19 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
           </h4>
         </div>
         <div className="flex items-center gap-2">
-          {progress.inputTokens && (
+          {(progress.measuredInputTokens || progress.estimatedInputTokens || progress.inputTokens) ? (
             <span className="text-xs font-mono text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
               <Coins className="w-3.5 h-3.5 text-emerald-400" />
-              <span>~{progress.inputTokens.toLocaleString()} tokens in</span>
+              {(progress.measuredInputTokens ?? 0) > 0 ? (
+                <span>Measured {(progress.measuredInputTokens ?? 0).toLocaleString()} tokens in</span>
+              ) : (
+                <span>~{(progress.estimatedInputTokens ?? progress.inputTokens ?? 0).toLocaleString()} Estimated tokens in</span>
+              )}
               {progress.costDetails && (
                 <span className="text-emerald-400 font-bold">&bull; {formatCostUsd(progress.costDetails.totalCostUsd)}</span>
               )}
             </span>
-          )}
+          ) : null}
           {progress.currentRound && progress.maxRounds && (
             <span className="text-xs font-mono text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
               Round {progress.currentRound} of {progress.maxRounds}
