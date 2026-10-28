@@ -13,7 +13,7 @@ import {
 } from '@/lib/image-attachments';
 import { normalizeSearchContextSize } from '@/lib/search-grounding';
 import { fetchFilesOnDemand, normalizeRepoPath } from '@/lib/github';
-import { calculateModelCost, extractSuggestedRefactors } from '@/lib/utils';
+import { calculateModelCost, extractGeminiCachedTokens, extractSuggestedRefactors } from '@/lib/utils';
 import { detectRepositoryFramework } from '@/lib/framework-detector';
 import {
   normalizeConversationHistory,
@@ -183,6 +183,8 @@ async function* streamMuseCompletionChunks(args: {
   prompt: string;
   historyMessages?: { role: string; content: string }[];
   images?: { mimeType: string; data: string }[];
+  /** Out-param: filled with the parser's observed cache-read tokens on settle. */
+  usageCapture?: { cachedInputTokens: number };
   temperature: number;
   timeoutMs: number;
   thinkingLevel?: string;
@@ -195,6 +197,9 @@ async function* streamMuseCompletionChunks(args: {
   if (typeof (timer as unknown as { unref?: unknown }).unref === 'function') {
     (timer as unknown as { unref: () => void }).unref();
   }
+  // Declared outside `try` so `finally` can always read it, even when the
+  // fetch itself throws before any byte is parsed.
+  const parser = createMuseStreamParser();
   try {
     // Grounded Muse requests use the Responses endpoint (Meta's only surface
     // with web_search); ungrounded requests stay on Chat Completions, which
@@ -249,7 +254,6 @@ async function* streamMuseCompletionChunks(args: {
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    const parser = createMuseStreamParser();
     const emit = (text: string) => ({ candidates: [{ content: { parts: [{ text }] } }] });
     const pushChunk = grounded ? pushMuseResponsesSseText : pushMuseSseText;
     const flushParser = grounded ? flushMuseResponsesStreamParser : flushMuseStreamParser;
@@ -266,6 +270,11 @@ async function* streamMuseCompletionChunks(args: {
     }
   } finally {
     clearTimeout(timer);
+    // Surface observed cache telemetry (0 when the provider sent none).
+    // `finally` also covers the early `return` on parser finish above.
+    if (args.usageCapture) {
+      args.usageCapture.cachedInputTokens = parser.cachedInputTokens;
+    }
   }
 }
 
@@ -756,6 +765,13 @@ ${treeListing}
             let streamResponse: any = null;
             let streamModel = '';
             let streamPass = 1;
+            // Measured cache-read tokens: Gemini usageMetadata accumulation
+            // vs Muse parser capture, depending on which provider streams.
+            // Both stay 0 when the provider sends no usage telemetry.
+            // The Muse capture object is read only AFTER the drain loop:
+            // the generator's `finally` (which fills it) runs on return.
+            let streamMuseUsage: { cachedInputTokens: number } | null = null;
+            let geminiCachedTokens = 0;
             const cascadeFailures: CascadeAttemptFailure[] = [];
 
             // thinkingLevel/thinkingSummaries normalized above (pre-overlay);
@@ -775,6 +791,7 @@ ${treeListing}
                     continue;
                   }
                   try {
+                    const museUsageCapture = { cachedInputTokens: 0 };
                     const museIterator = streamMuseCompletionChunks({
                       apiKey: museKey,
                       model,
@@ -782,6 +799,7 @@ ${treeListing}
                       prompt: finalPromptPayload,
                       historyMessages: museHistory,
                       images: museImageParts.length > 0 ? museImageParts : undefined,
+                      usageCapture: museUsageCapture,
                       temperature: mode === 'idea' ? 0.4 : 0.2,
                       timeoutMs,
                       thinkingLevel,
@@ -803,6 +821,7 @@ ${treeListing}
                     };
                     streamModel = model;
                     streamPass = pass;
+                    streamMuseUsage = museUsageCapture;
                     break;
                   } catch (err) {
                     console.warn(`[Prompt Stream Cascade] ${model} failed in Pass ${pass}:`, err);
@@ -916,6 +935,14 @@ ${treeListing}
 
             const processChunkValue = (val: any) => {
               if (!val) return;
+              // Gemini usage telemetry: accumulate the max observed
+              // `usageMetadata.cachedContentTokenCount` across chunks
+              // (present on reporting chunks, absent elsewhere).
+              // Muse-adapted chunks carry no usageMetadata — reads 0.
+              const seenCached = extractGeminiCachedTokens(val);
+              if (seenCached > geminiCachedTokens) {
+                geminiCachedTokens = seenCached;
+              }
               const candidate = val.candidates?.[0];
               const parts = candidate?.content?.parts || [];
               let foundPromptText = false;
@@ -968,7 +995,14 @@ ${treeListing}
             });
 
             const estimatedOutputTokens = Math.max(1, Math.ceil(cleanText.length / 4));
-            const costCalculation = calculateModelCost(streamModel, estimatedInputTokens, estimatedOutputTokens);
+            // Measured cache reads travel as the 4th arg (0 when the
+            // provider sent no usage telemetry — honest zero, not a bug).
+            // `calculateModelCost` clamps into [0, inputTokens] and bills
+            // the cached slice at the tier's discounted cached rate.
+            const measuredCachedTokens = isMuseModelTag(streamModel)
+              ? streamMuseUsage?.cachedInputTokens ?? 0
+              : geminiCachedTokens;
+            const costCalculation = calculateModelCost(streamModel, estimatedInputTokens, estimatedOutputTokens, measuredCachedTokens);
             const costDetails = {
               inputTokens: estimatedInputTokens,
               outputTokens: estimatedOutputTokens,

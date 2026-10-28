@@ -9,6 +9,7 @@ import {
   createMuseStreamParser,
   extractMuseDeltaText,
   extractMuseResponsesDeltaText,
+  extractMuseUsageCachedTokens,
   flushMuseResponsesStreamParser,
   flushMuseStreamParser,
   normalizeMuseResponsesEffort,
@@ -272,4 +273,39 @@ test('responses stream reassembles output_text deltas and stops at completed', (
   assert.equal(out.join(''), 'Hello world');
   assert.equal(parser.finished, true);
   assert.equal(extractMuseResponsesDeltaText({ type: 'response.output_text.delta', delta: 'x' }), 'x');
+});
+
+test('chat usage chunk records cached tokens without emitting text', () => {
+  const parser = createMuseStreamParser();
+  const out: string[] = [];
+  const payload =
+    deltaEvent('Hello') +
+    `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 1000, completion_tokens: 10, total_tokens: 1010, prompt_tokens_details: { cached_tokens: 400 } } })}\n\n` +
+    doneEvent;
+  out.push(...pushMuseSseText(parser, payload));
+  assert.equal(out.join(''), 'Hello');
+  assert.equal(parser.finished, true);
+  assert.equal(parser.cachedInputTokens, 400);
+});
+
+test('responses completed event records nested usage cached tokens', () => {
+  const parser = createMuseStreamParser();
+  const out: string[] = [];
+  const payload =
+    `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: 'Hi' })}\n\n` +
+    `data: ${JSON.stringify({ type: 'response.completed', response: { usage: { input_tokens: 800, output_tokens: 20, input_tokens_details: { cached_tokens: 250 } } } })}\n\n`;
+  out.push(...pushMuseResponsesSseText(parser, payload));
+  assert.equal(out.join(''), 'Hi');
+  assert.equal(parser.finished, true);
+  assert.equal(parser.cachedInputTokens, 250);
+});
+
+test('extractMuseUsageCachedTokens stays zero without usage telemetry', () => {
+  assert.equal(extractMuseUsageCachedTokens({ choices: [{ delta: { content: 'x' } }] }), 0);
+  assert.equal(extractMuseUsageCachedTokens(null), 0);
+  assert.equal(extractMuseUsageCachedTokens('garbage'), 0);
+  assert.equal(
+    extractMuseUsageCachedTokens({ usage: { prompt_tokens_details: { cached_tokens: 12.9 } } }),
+    12
+  );
 });

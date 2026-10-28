@@ -5,6 +5,7 @@ import {
   calculateModelCost,
   resolveModelPricing,
   formatCompiledPrompt,
+  extractGeminiCachedTokens,
   extractSuggestedRefactors,
 } from './utils.ts';
 
@@ -147,3 +148,21 @@ test('calculateModelCost clamps cached tokens to [0, inputTokens]', () => {
   assert.ok(Math.abs(negative.inputCostUsd - 1.5) < 1e-9);
 });
 
+
+test('extractGeminiCachedTokens reads usageMetadata cache reads', () => {
+  assert.equal(
+    extractGeminiCachedTokens({ usageMetadata: { promptTokenCount: 1000, cachedContentTokenCount: 320 } }),
+    320
+  );
+  assert.equal(extractGeminiCachedTokens({ candidates: [] }), 0);
+  assert.equal(extractGeminiCachedTokens({ usageMetadata: {} }), 0);
+  assert.equal(extractGeminiCachedTokens(null), 0);
+  assert.equal(extractGeminiCachedTokens({ usageMetadata: { cachedContentTokenCount: -5 } }), 0);
+});
+
+test('calculateModelCost fourth arg prices measured cache reads at the cached rate', () => {
+  const cost = calculateModelCost('gemini-3.8-flash', 10000, 0, 4000);
+  assert.equal(cost.cachedInputTokens, 4000);
+  // 6000 fresh @ $0.75/M + 4000 cached @ $0.075/M.
+  assert.ok(Math.abs(cost.inputCostUsd - (6000 / 1_000_000 * 0.75 + 4000 / 1_000_000 * 0.075)) < 1e-9);
+});

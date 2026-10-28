@@ -21,10 +21,55 @@ export interface MuseStreamParser {
   chunksProduced: number;
   /** All text received, retained for the non-SSE fallback in flush. */
   received: string;
+  /** Max cache-read input tokens observed in usage payloads (0 when absent). */
+  cachedInputTokens: number;
 }
 
 export function createMuseStreamParser(): MuseStreamParser {
-  return { buffer: '', finished: false, chunksProduced: 0, received: '' };
+  return { buffer: '', finished: false, chunksProduced: 0, received: '', cachedInputTokens: 0 };
+}
+
+/**
+ * Reads cache-read input tokens from an OpenAI-compatible usage payload.
+ * Chat path: `usage.prompt_tokens_details.cached_tokens`. Responses path:
+ * `response.usage.input_tokens_details.cached_tokens` (top-level `usage`
+ * tolerated too). Returns 0 when no usage block is present — providers only
+ * send usage when they have cache telemetry, so absence stays honest zero.
+ * Anthropic `cache_read_input_tokens` is deliberately NOT read: this
+ * transport speaks OpenAI-compatible chat/completions + Responses only.
+ */
+export function extractMuseUsageCachedTokens(payload: unknown): number {
+  if (!payload || typeof payload !== 'object') return 0;
+  const root = payload as Record<string, unknown>;
+  const candidates: unknown[] = [root['usage']];
+  const response = root['response'];
+  if (response && typeof response === 'object') {
+    candidates.push((response as Record<string, unknown>)['usage']);
+  }
+  let best = 0;
+  for (const usage of candidates) {
+    if (!usage || typeof usage !== 'object') continue;
+    const u = usage as Record<string, unknown>;
+    const details = u['prompt_tokens_details'] ?? u['input_tokens_details'];
+    if (details && typeof details === 'object') {
+      const cached = (details as Record<string, unknown>)['cached_tokens'];
+      if (typeof cached === 'number' && Number.isFinite(cached) && cached > best) {
+        best = Math.floor(cached);
+      }
+    }
+    const flat = u['cached_tokens'];
+    if (typeof flat === 'number' && Number.isFinite(flat) && flat > best) {
+      best = Math.floor(flat);
+    }
+  }
+  return best;
+}
+
+function noteParserUsage(parser: MuseStreamParser, payload: unknown): void {
+  const found = extractMuseUsageCachedTokens(payload);
+  if (found > (parser.cachedInputTokens ?? 0)) {
+    parser.cachedInputTokens = found;
+  }
 }
 
 interface MuseChoiceLike {
@@ -55,7 +100,7 @@ export function extractMuseDeltaText(payload: unknown): string {
 }
 
 /** Parses one frame's `data:` lines into delta texts, stopping at `[DONE]`. */
-function parseFrameTexts(frame: string): { texts: string[]; done: boolean } {
+function parseFrameTexts(frame: string, parser: MuseStreamParser): { texts: string[]; done: boolean } {
   const texts: string[] = [];
   for (const line of frame.split('\n')) {
     const trimmed = line.trim();
@@ -64,6 +109,7 @@ function parseFrameTexts(frame: string): { texts: string[]; done: boolean } {
     if (payload === '[DONE]') return { texts, done: true };
     try {
       const json: unknown = JSON.parse(payload);
+      noteParserUsage(parser, json);
       const deltaText = extractMuseDeltaText(json);
       if (deltaText.length > 0) texts.push(deltaText);
     } catch {
@@ -86,7 +132,7 @@ export function pushMuseSseText(parser: MuseStreamParser, text: string): string[
   const frames = parser.buffer.split(/\r?\n\r?\n/);
   parser.buffer = frames.pop() ?? '';
   for (const frame of frames) {
-    const { texts, done } = parseFrameTexts(frame);
+    const { texts, done } = parseFrameTexts(frame, parser);
     for (const deltaText of texts) {
       parser.chunksProduced += 1;
       out.push(deltaText);
@@ -111,7 +157,7 @@ export function flushMuseStreamParser(parser: MuseStreamParser): string[] {
   const tail = parser.buffer.trim();
   parser.buffer = '';
   if (tail.length > 0) {
-    const { texts } = parseFrameTexts(tail);
+    const { texts } = parseFrameTexts(tail, parser);
     for (const deltaText of texts) {
       parser.chunksProduced += 1;
       out.push(deltaText);
@@ -121,7 +167,9 @@ export function flushMuseStreamParser(parser: MuseStreamParser): string[] {
     const raw = parser.received.trim();
     if (raw.startsWith('{')) {
       try {
-        const deltaText = extractMuseDeltaText(JSON.parse(raw) as unknown);
+        const body = JSON.parse(raw) as unknown;
+        noteParserUsage(parser, body);
+        const deltaText = extractMuseDeltaText(body);
         if (deltaText.length > 0) {
           parser.chunksProduced += 1;
           out.push(deltaText);
@@ -291,7 +339,7 @@ export function extractMuseResponsesDeltaText(payload: unknown): string {
 }
 
 /** Parses one Responses frame's `data:` lines into delta texts. */
-function parseResponsesFrameTexts(frame: string): { texts: string[]; done: boolean } {
+function parseResponsesFrameTexts(frame: string, parser: MuseStreamParser): { texts: string[]; done: boolean } {
   const texts: string[] = [];
   for (const line of frame.split('\n')) {
     const trimmed = line.trim();
@@ -300,6 +348,9 @@ function parseResponsesFrameTexts(frame: string): { texts: string[]; done: boole
     if (data === '[DONE]') return { texts, done: true };
     try {
       const json: unknown = JSON.parse(data);
+      // Terminal events (notably response.completed) carry the authoritative
+      // `response.usage` block — capture before returning done.
+      noteParserUsage(parser, json);
       if (json && typeof json === 'object') {
         const type = (json as Record<string, unknown>)['type'];
         if (typeof type === 'string' && /^(response\.(completed|failed|incomplete|cancelled))$/.test(type)) {
@@ -327,7 +378,7 @@ export function pushMuseResponsesSseText(parser: MuseStreamParser, text: string)
   const frames = parser.buffer.split(/\r?\n\r?\n/);
   parser.buffer = frames.pop() ?? '';
   for (const frame of frames) {
-    const { texts, done } = parseResponsesFrameTexts(frame);
+    const { texts, done } = parseResponsesFrameTexts(frame, parser);
     for (const deltaText of texts) {
       parser.chunksProduced += 1;
       out.push(deltaText);
@@ -350,7 +401,7 @@ export function flushMuseResponsesStreamParser(parser: MuseStreamParser): string
   const tail = parser.buffer.trim();
   parser.buffer = '';
   if (tail.length > 0) {
-    const { texts } = parseResponsesFrameTexts(tail);
+    const { texts } = parseResponsesFrameTexts(tail, parser);
     for (const deltaText of texts) {
       parser.chunksProduced += 1;
       out.push(deltaText);
@@ -360,7 +411,9 @@ export function flushMuseResponsesStreamParser(parser: MuseStreamParser): string
     const raw = parser.received.trim();
     if (raw.startsWith('{')) {
       try {
-        const deltaText = extractMuseResponsesDeltaText(JSON.parse(raw) as unknown);
+        const body = JSON.parse(raw) as unknown;
+        noteParserUsage(parser, body);
+        const deltaText = extractMuseResponsesDeltaText(body);
         if (deltaText.length > 0) {
           parser.chunksProduced += 1;
           out.push(deltaText);

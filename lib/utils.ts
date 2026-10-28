@@ -252,6 +252,21 @@ export function calculateModelCost(
 }
 
 /**
+ * Reads cache-read input tokens from a Gemini `GenerateContentResponse`
+ * chunk (`usageMetadata.cachedContentTokenCount`). Returns 0 when the chunk
+ * carries no usage telemetry — the SDK only populates `usageMetadata` on
+ * chunks where the backend reports it, so absence stays honest zero.
+ */
+export function extractGeminiCachedTokens(chunk: unknown): number {
+  if (!chunk || typeof chunk !== 'object') return 0;
+  const usage = (chunk as Record<string, unknown>)['usageMetadata'];
+  if (!usage || typeof usage !== 'object') return 0;
+  const cached = (usage as Record<string, unknown>)['cachedContentTokenCount'];
+  if (typeof cached !== 'number' || !Number.isFinite(cached) || cached <= 0) return 0;
+  return Math.floor(cached);
+}
+
+/**
  * Formats a USD cost value with clean precision (e.g. '$0.0014 USD').
  */
 export function formatCostUsd(cost: number): string {

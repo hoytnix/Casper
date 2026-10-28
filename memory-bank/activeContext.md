@@ -1,6 +1,12 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Captured real cache-read telemetry so Cached Input is measured, not 0 by default:
+- **Route (`/app/api/compile/route.ts`)**: Gemini `usageMetadata.cachedContentTokenCount` accumulated (max) in `processChunkValue`; Muse parser capture surfaced via `usageCapture` out-param (filled in generator `finally`, parser hoisted above `try` so early fetch failures can't mask errors); measured count passed as 4th arg to `calculateModelCost` in the `done` event (existing clamp + discounted-rate semantics unchanged).
+- **Muse transport (`/lib/muse-stream.ts`)**: `MuseStreamParser.cachedInputTokens` + `extractMuseUsageCachedTokens()` (OpenAI-compatible `prompt_tokens_details.cached_tokens` / `input_tokens_details.cached_tokens`; Anthropic `cache_read_input_tokens` deliberately unread — wrong transport shape); wired into chat frames, Responses terminal events, and both single-JSON flush fallbacks. No `stream_options` body change (400 risk on the undocumented Meta API — capture stays opportunistic).
+- **Gemini helper (`/lib/utils.ts`)**: `extractGeminiCachedTokens()` + 2 tests (incl. 4th-arg discounted pricing); 3 new `muse-stream` tests (chat usage chunk, Responses completed usage, zero-without-telemetry).
+- **No-change verified**: `calculateModelCost` (already supported the arg), `ContextInspector` row (auto-appears when > 0), finance Zod schema + client POST (already optional/forwarded).
+- Verified: 92/92 `node:test` (5 new), `tsc` clean, `eslint` 0 errors, `pnpm build` green.
 Fixed false-positive Hono classification on this pure-Next.js repo (badge + instruction selection):
 - **Root causes (reproduced live)**: (1) `hasHonoRouteCallShape` matched `headers.get('content-type')` → 6 phantom `hono-route` + 2 phantom `hono-middleware` roles; (2) `detectRepositoryFramework` never read roles — it flipped on `hono/zod-validator` + `` app.route('/base', …) `` prose inside route.ts's own embedded Hono system prompt, then on `= new Hono()` / `require('hono')` inside `*.test.ts` fixtures (single-line-escaped).
 - **Detector (`/lib/framework-detector.ts`)**: new `hasHonoImportStatement()` (import/require statement shape incl. destructured require; `= new Hono()` at statement start only); route-call evidence gated on same-file import; `require` alternative line-anchored so mid-line fixture quotes don't match.

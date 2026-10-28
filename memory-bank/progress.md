@@ -149,3 +149,8 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Correction to the report: role counts never fed the detector/instruction choice — the flip came from substring scans hitting route.ts's embedded Hono prompt prose, then `*.test.ts` fixtures; fixed all three layers plus the router's bare-`hono` skeleton boost (now `[hono-` role-label only).
   - Statement-shaped `hasHonoImportStatement()` shared by detector/indexer/code-graph (`/lib/framework-detector.ts`, `/lib/nextjs-indexer.ts`, `/lib/nextjs-code-graph.ts`, `/lib/local-context-router.ts`); 8 regression tests in `/lib/hono-detection.test.ts` (4 failed pre-fix).
   - Verified: 87/87 `node:test` (8 new), `tsc` clean, `eslint` 0 errors, `pnpm build` green; probe now `nextjs`, zero Hono roles; stale persisted badge values self-heal on next compile.
+|- [x] **Measured Cache-Read Telemetry (Cached Input no longer always 0)**:
+  - Confirmed the trace: route passed 3 args (cached defaulted 0), chunk handler ignored `usageMetadata`, Muse parser surfaced text only.
+  - Capture added: Gemini `usageMetadata.cachedContentTokenCount` max-accumulation (`extractGeminiCachedTokens` in `/lib/utils.ts`); Muse OpenAI-compatible usage via `parser.cachedInputTokens` + `usageCapture` out-param (`/lib/muse-stream.ts`, `/app/api/compile/route.ts`); 4th arg in the `done`-event `calculateModelCost`.
+  - Deliberate deviations: Anthropic `cache_read_input_tokens` not read (wrong transport — repo's Muse API is OpenAI-compatible); no `stream_options` request change (400 risk on undocumented Meta API); utils/ContextInspector/finance untouched (contracts already supported it).
+  - Verified: 92/92 `node:test` (5 new), `tsc` clean, `eslint` 0 errors, `pnpm build` green.
