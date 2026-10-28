@@ -3,6 +3,7 @@
 import React from 'react';
 import { GitBranch, Star, Trash2, ArrowUpRight, Clock, Lock, Globe, Layers } from 'lucide-react';
 import { Repo } from '@/types';
+import { frameworkBadgeLabel } from '@/lib/framework-detector';
 
 interface RepoCardProps {
   repo: Repo;
@@ -56,7 +57,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({ repo, onOpen, onDelete }) =>
             </h3>
 
             <p className="text-xs text-slate-400 line-clamp-2 mt-2 leading-relaxed">
-              {repo.description || 'Next.js repository ready for architectural compilation and prompt generation.'}
+              {repo.description || 'Repository ready for architectural compilation and prompt generation.'}
             </p>
           </div>
 
@@ -95,7 +96,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({ repo, onOpen, onDelete }) =>
       <div className="mt-5 pt-4 border-t border-white/[0.06] flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-xs text-slate-400">
           <Layers className="w-3.5 h-3.5 text-sky-400" />
-          <span className="font-medium text-slate-300">App Router</span>
+          <span className="font-medium text-slate-300">{repo.detectedFramework ? frameworkBadgeLabel(repo.detectedFramework) : 'Multi-Framework'}</span>
         </div>
 
         <button

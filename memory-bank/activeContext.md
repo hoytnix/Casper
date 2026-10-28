@@ -1,6 +1,7 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Homepage narrative broadened from Next.js-specific to multi-framework in `/components/RepoGrid.tsx` + `/components/RepoCard.tsx`: kicker, headline, paragraph, metadata strip, all four blueprint layers (entries/layouts, actions/routers, endpoints, client UI), tile copy, card fallback description; repo cards now show the detected-framework label (`frameworkBadgeLabel`, "Multi-Framework" fallback) instead of a hardcoded "App Router". Copy-only, logic untouched. Verified: `tsc` clean, `eslint` 0 errors (build skipped per user instruction).
 Homepage rebrand: "Next.js Cartography Engine" → "App Cartography Engine" in `/components/RepoGrid.tsx` (monolith schematic header + add-repo tile copy broadened to Next.js/Hono/Vite); props, handlers, and grid logic untouched. Verified: `tsc` clean, `eslint` 0 errors, `pnpm build` green, zero stale label references.
 Header-attributed INP block (8.2s on `header.sticky`) traced to warmup churn, not header handlers:
 - **Measured first** (`/tmp/inp-probe.mjs`, since removed): graph build 34ms @500 files, sanitize/Zod 19ms, Markdown first-parse ~30–100ms/bubble — all too small to explain 8s. The header's own handlers are trivial (navigation, modal open).

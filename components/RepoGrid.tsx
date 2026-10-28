@@ -41,20 +41,20 @@ export const RepoGrid: React.FC<RepoGridProps> = ({
             {/* 1-Line Quiet Kicker (Zero-Pill Discipline) */}
             <div className="flex items-center gap-2 text-xs font-semibold text-sky-400">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Next.js Full-Stack Architecture Cartography</span>
+              <span>Multi-Framework Architecture Cartography</span>
               <span className="text-slate-600" aria-hidden="true">&bull;</span>
-              <span className="text-slate-400">App Router &middot; RSC &middot; Unix VFS</span>
+              <span className="text-slate-400">Next.js &middot; Hono &middot; Vite &middot; Unix VFS</span>
             </div>
 
             <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight text-balance">
-              Compile Bulletproof Next.js Architecture Prompts with{' '}
+              Compile Bulletproof Architecture Prompts with{' '}
               <span className="bg-gradient-to-r from-sky-400 via-indigo-300 to-indigo-400 bg-clip-text text-transparent">
                 Casper 👻
               </span>
             </h2>
 
             <p className="text-slate-400 text-sm leading-relaxed max-w-xl">
-              Connect any Next.js repository. Casper the friendly ghost reads all ur code lol — inspecting your App Router structure, Server/Client Component boundaries, Server Actions, and Route Handlers with zero CORS friction, leveraging in-memory Unix VFS tools and Gemini 4 Argon to compile high-precision prompts for autonomous coding agents.
+              Connect any repository — Next.js, Hono, or Vite. Casper the friendly ghost reads all ur code lol — inspecting App Router structure, Hono routes and middleware, or Vite entries and component trees, mapping Server/Client boundaries, validators, and endpoints with zero CORS friction, leveraging in-memory Unix VFS tools and Gemini 4 Argon to compile high-precision prompts for autonomous coding agents.
             </p>
 
             {/* Unboxed Metadata Strip (Zero-Pill Discipline with Typographic Separators) */}
@@ -66,7 +66,7 @@ export const RepoGrid: React.FC<RepoGridProps> = ({
               <span className="text-slate-600" aria-hidden="true">&bull;</span>
               <span className="inline-flex items-center gap-1.5 text-slate-300 font-medium">
                 <Zap className="w-3.5 h-3.5 text-amber-400" />
-                App Router &amp; RSC Aware
+                Multi-Framework Aware
               </span>
               <span className="text-slate-600" aria-hidden="true">&bull;</span>
               <span className="inline-flex items-center gap-1.5 text-slate-300 font-medium">
@@ -90,40 +90,40 @@ export const RepoGrid: React.FC<RepoGridProps> = ({
 
               {/* Stack Architecture Blueprint Layers */}
               <div className="space-y-2.5 text-xs font-mono">
-                {/* Layer 1: App Router Root */}
+                {/* Layer 1: Entries & Root Layouts */}
                 <div className="p-3 rounded-xl bg-slate-900/70 border border-white/[0.06] flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="w-2 h-2 rounded-sm bg-sky-400" />
-                    <span className="text-slate-200">app/layout.tsx</span>
+                    <span className="text-slate-200">app/layout.tsx &middot; index.html</span>
                   </div>
-                  <span className="text-[11px] text-sky-400 font-medium">Root Layout (RSC)</span>
+                  <span className="text-[11px] text-sky-400 font-medium">Entries &amp; Root Layouts</span>
                 </div>
 
-                {/* Layer 2: Server Actions */}
+                {/* Layer 2: Actions & Routers */}
                 <div className="p-3 rounded-xl bg-slate-900/70 border border-white/[0.06] flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="w-2 h-2 rounded-sm bg-indigo-400" />
-                    <span className="text-slate-200">actions/*.ts</span>
+                    <span className="text-slate-200">actions/*.ts &middot; src/routes/*</span>
                   </div>
-                  <span className="text-[11px] text-indigo-400 font-medium">&apos;use server&apos; Actions</span>
+                  <span className="text-[11px] text-indigo-400 font-medium">Actions &amp; Routers</span>
                 </div>
 
                 {/* Layer 3: Route Handlers */}
                 <div className="p-3 rounded-xl bg-slate-900/70 border border-white/[0.06] flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="w-2 h-2 rounded-sm bg-emerald-400" />
-                    <span className="text-slate-200">app/api/*/route.ts</span>
+                    <span className="text-slate-200">app/api/* &middot; src/index.ts</span>
                   </div>
                   <span className="text-[11px] text-emerald-400 font-medium">HTTP Endpoints</span>
                 </div>
 
-                {/* Layer 4: Client Island */}
+                {/* Layer 4: Client UI */}
                 <div className="p-3 rounded-xl bg-slate-900/70 border border-white/[0.06] flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="w-2 h-2 rounded-sm bg-amber-400" />
-                    <span className="text-slate-200">components/*</span>
+                    <span className="text-slate-200">components/* &middot; src/App.*</span>
                   </div>
-                  <span className="text-[11px] text-amber-400 font-medium">&apos;use client&apos; Leaf Nodes</span>
+                  <span className="text-[11px] text-amber-400 font-medium">Client UI &amp; Islands</span>
                 </div>
               </div>
 

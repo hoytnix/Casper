@@ -201,3 +201,4 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Fingerprint-keyed embed skip + macrotask yield every 5 files (`/lib/routers/arctic-embed-router.ts`); session reuse on unchanged prompt (`/lib/routers/gemini-nano-router.ts`).
   - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green. Field INP re-measurement needs a real browser run.
 - [x] **Homepage Rebrand to App Cartography Engine**: schematic header label + add-repo tile copy in `/components/RepoGrid.tsx`; logic byte-identical. Verified: `tsc` clean, `eslint` 0 errors, `pnpm build` green.
+- [x] **Homepage Narrative Broadened to Multi-Framework**: hero kicker/headline/paragraph/metadata + blueprint layers + card copy in `/components/RepoGrid.tsx` and `/components/RepoCard.tsx` (cards show detected-framework label); copy-only. Verified: `tsc` clean, `eslint` 0 errors (build skipped per user).
