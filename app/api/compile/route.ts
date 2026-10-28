@@ -4,6 +4,11 @@ import { SourceFile, ExplorationStep } from '@/types';
 import { fetchFilesOnDemand, normalizeRepoPath } from '@/lib/github';
 import { calculateModelCost, extractSuggestedRefactors } from '@/lib/utils';
 import { detectRepositoryFramework } from '@/lib/framework-detector';
+import {
+  normalizeConversationHistory,
+  toGenAiHistory,
+  toMuseMessages,
+} from '@/lib/chat-history';
 
 const NEXTJS_EXPERT_SYSTEM_INSTRUCTION = `You are Casper, the friendly ghost who reads all your code — a Principal Architect and Autonomous Prompt Compiler specializing exclusively in Next.js 15+ App Router, React Server Components (RSC), Server Actions, Route Handlers, and modern TypeScript architecture.
 You have been given a Next.js repository structure and the developer's requested improvements.
@@ -100,6 +105,7 @@ async function* streamMuseCompletionChunks(args: {
   model: string;
   systemInstruction: string;
   prompt: string;
+  historyMessages?: { role: string; content: string }[];
   temperature: number;
   timeoutMs: number;
 }): AsyncGenerator<{ candidates: { content: { parts: { text: string }[] } }[] }> {
@@ -121,6 +127,7 @@ async function* streamMuseCompletionChunks(args: {
         temperature: args.temperature,
         messages: [
           { role: 'system', content: args.systemInstruction },
+          ...(Array.isArray(args.historyMessages) ? args.historyMessages : []),
           { role: 'user', content: args.prompt },
         ],
       }),
@@ -218,6 +225,7 @@ export async function POST(req: NextRequest) {
       maxRounds: rawMaxRounds = 3,
       repositoryContext, // For fallback legacy full mode
       investigatedFiles: clientInvestigatedFiles, // Pre-routed files from client
+      conversationHistory: rawConversationHistory, // Prior ChatMessage turns for multi-turn caching
       models: customModels,
       requestTimeout = 60,
     } = body;
@@ -558,9 +566,21 @@ ${treeListing}
               finalPromptPayload = `Here is the agentically discovered repository context:\n\n${focusedContext}\n\n==========================================\nDEVELOPER'S QUESTION:\n${improvementPrompt}\n\nAnswer the question directly and authoritatively with @[/path/to/file.ext] citations according to your system instruction.`;
             }
 
+            // Multi-turn state: prior chat turns are re-sent as the stable
+            // conversation prefix so Gemini's implicit context caching applies
+            // across follow-ups. Each request stays stateless HTTP — no
+            // server-side session store — with the current repo context plus
+            // the new developer prompt appended as the latest user turn.
+            const historyTurns = normalizeConversationHistory(rawConversationHistory);
+            const geminiHistory = toGenAiHistory(historyTurns);
+            const museHistory = toMuseMessages(historyTurns);
+            const historyChars = historyTurns.reduce((acc, t) => acc + t.content.length, 0);
+
             const estimatedInputTokens = Math.max(
               1,
-              Math.ceil((systemInstructionToUse.length + finalPromptPayload.length) / 4)
+              Math.ceil(
+                (systemInstructionToUse.length + finalPromptPayload.length + historyChars) / 4
+              )
             );
 
             sendEvent({
@@ -572,6 +592,7 @@ ${treeListing}
               trail: explorationTrail,
               inputTokens: estimatedInputTokens,
               detectedFramework,
+              historyTurns: historyTurns.length,
             });
 
             let streamResponse: any = null;
@@ -599,6 +620,7 @@ ${treeListing}
                       model,
                       systemInstruction: systemInstructionToUse,
                       prompt: finalPromptPayload,
+                      historyMessages: museHistory,
                       temperature: mode === 'idea' ? 0.4 : 0.2,
                       timeoutMs,
                     })[Symbol.asyncIterator]();
@@ -635,10 +657,15 @@ ${treeListing}
                       };
                     }
 
+                    // Fresh stateful chat session per attempt: the normalized
+                    // history prefix plus the current repo context turn travel
+                    // together, so follow-ups hit the implicit context cache.
+                    // A new Chat per attempt keeps cascade retries from
+                    // polluting each other's conversation state.
+                    const chat = ai.chats.create({ model, history: geminiHistory });
                     const candidateStream = await withTimeout(
-                      ai.models.generateContentStream({
-                        model,
-                        contents: finalPromptPayload,
+                      chat.sendMessageStream({
+                        message: finalPromptPayload,
                         config,
                       }),
                       timeoutMs,

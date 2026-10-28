@@ -486,6 +486,13 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           explorationTrail: [explorationStepRecord],
         });
 
+        // Multi-turn state: prior turns travel as the stable conversation
+        // prefix (server normalizes + bounds them) while the snapshot cache
+        // above keeps investigated-file downloads at zero for unchanged SHAs.
+        const conversationHistory = messages
+          .filter((m) => typeof m.content === 'string' && m.content.trim().length > 0)
+          .map((m) => ({ role: m.role, content: m.content }));
+
         const response = await fetch('/api/compile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -496,6 +503,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             branch: repo.branch,
             treeListing,
             investigatedFiles: downloadedInvestigated,
+            conversationHistory,
             improvementPrompt: promptText,
             customApiKey: settings.customApiKey,
             customMuseApiKey: settings.museApiKey,

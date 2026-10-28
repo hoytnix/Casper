@@ -1,6 +1,11 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Implemented stateful multi-turn compilation with conversation-history context caching:
+- **Normalizer (`/lib/chat-history.ts`, new)**: `normalizeConversationHistory` bounds raw client turns (last 10, 6k chars/turn, 24k total, newest survives), maps assistant→model, merges same-role runs, drops leading orphans/empties; `toGenAiHistory` / `toMuseMessages` provider mappers. 7 `node:test` cases in `/lib/chat-history.test.ts`.
+- **Compile route (`/app/api/compile/route.ts`)**: accepts `conversationHistory`; synthesis uses a fresh `ai.chats.create({model, history})` + `sendMessageStream({message, config})` per cascade attempt (fresh Chat per retry so failures never pollute state); Muse path prepends normalized history to its messages array; token estimate and `compiling_start` include history size. Empty history is byte-identical to the old stateless path.
+- **Client (`/components/RepoWorkspace.tsx`)**: follow-ups POST prior `messages` as `conversationHistory` (current prompt excluded — server appends it as the new turn); snapshot delta cache already reuses `snapshot.files` at zero downloads for unchanged SHAs.
+- Verified: 32/32 `node:test` pass (7 new), `tsc --noEmit` clean, `eslint` clean on all touched files, `pnpm build` green.
 Implemented Vite SPA cartography alongside Next.js/Hono (`DetectedFramework` gains `'vite'`):
 - **Types (`/types/index.ts`)**: `DetectedFramework` includes `'vite'`; `NextJsFileCard['role']` gains `vite-entry` / `vite-config` / `vite-component`.
 - **Detector (`/lib/framework-detector.ts`)**: `vite.config.*` tree paths, `index.html` + `from 'vite'` imports, and `vite` / `@vitejs/plugin-react` package deps return `'vite'`; badge label `Vite SPA & SSR`.

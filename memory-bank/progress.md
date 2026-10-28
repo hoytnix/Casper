@@ -45,6 +45,11 @@
 Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, Muse Spark cascade integration, and fully synchronized Memory Bank.
 
 ## Completed Modules (cont.)
+- [x] **Multi-Turn Compilation with History Context Caching**:
+  - Bounded history normalizer + provider mappers (`/lib/chat-history.ts`, `/lib/chat-history.test.ts` 7/7)
+  - Stateful Gemini chat sessions per cascade attempt + history-aware Muse path (`/app/api/compile/route.ts`)
+  - Client forwards prior turns; snapshot delta cache keeps file downloads at zero (`/components/RepoWorkspace.tsx`)
+  - Verified: 32/32 `node:test` pass, `tsc --noEmit` clean, `eslint` clean, `pnpm build` green
 - [x] **Vite SPA Cartography Support**:
   - `DetectedFramework` extended with `'vite'` (`/types/index.ts`); new `vite-entry` / `vite-config` / `vite-component` file roles
   - Detection via `vite.config.*`, `index.html` + vite imports, and package.json vite deps (`/lib/framework-detector.ts`); `Vite SPA & SSR` workspace badge label
