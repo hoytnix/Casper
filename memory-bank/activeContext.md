@@ -1,6 +1,15 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Fixed false-positive Hono classification on this pure-Next.js repo (badge + instruction selection):
+- **Root causes (reproduced live)**: (1) `hasHonoRouteCallShape` matched `headers.get('content-type')` → 6 phantom `hono-route` + 2 phantom `hono-middleware` roles; (2) `detectRepositoryFramework` never read roles — it flipped on `hono/zod-validator` + `` app.route('/base', …) `` prose inside route.ts's own embedded Hono system prompt, then on `= new Hono()` / `require('hono')` inside `*.test.ts` fixtures (single-line-escaped).
+- **Detector (`/lib/framework-detector.ts`)**: new `hasHonoImportStatement()` (import/require statement shape incl. destructured require; `= new Hono()` at statement start only); route-call evidence gated on same-file import; `require` alternative line-anchored so mid-line fixture quotes don't match.
+- **Indexer (`/lib/nextjs-indexer.ts`)**: strong signal delegates to the helper; weak regex requires route-path first arg (`['"`]/`); weak `hono-route` check moved after hook/store/types/config/util/client-component (real imports still return early via `strongHono`).
+- **Code graph (`/lib/nextjs-code-graph.ts`)**: `isHonoFile` uses the helper — no more phantom `ROUTE /base` symbols/methods from prose.
+- **Router (`/lib/local-context-router.ts`)**: Tier 2 boost matches role label `[hono-` only, not bare `hono` (filenames/export names like framework-detector.ts are not evidence). Tier 3 path lists verified empty on this repo.
+- **Tests (`/lib/hono-detection.test.ts`, new)**: 8 cases (4 failed pre-fix, incl. detector-poisoning, both hijacks, graph prose). Convention note: cross-module runtime imports need explicit `.ts` extension (`allowImportingTsExtensions`) or plain `node --test` fails with ERR_MODULE_NOT_FOUND.
+- Verified: 87/87 `node:test` (8 new), `tsc` clean, `eslint` 0 errors, `pnpm build` green; repo-wide probe now `nextjs` with zero Hono roles and correct per-file roles.
+- Note: a stale persisted `detectedFramework: 'hono'` in an existing browser (repo/snapshot record) still wins over live detection until the next compile re-saves it — badge self-heals on next compile.
 Enabled screenshot upload + attach in Casper chat (base64, clipboard Ctrl+V paste):
 - **Types (`/types/index.ts`)**: `ImageMime` union + `ImageAttachment` contract; `ChatMessage.images?` / `imageTokensCount?`; `snapshotMeta.imageCount?` / `imageBytes?`; `IngestionSnapshot.imageCount?` / `imageBytes?`; `IngestionProgress.activeImageCount?`.
 - **Validators (`/lib/image-attachments.ts`, new)**: Zod `imageAttachmentSchema` / `chatImagesSchema` (max 4, 5MB each, 7MB total) / `compileImagesInputSchema`; `parseDataUrl`, `estimateBase64Bytes`, `estimateImageTokens` (tile-based w*h/750, NOT byte/4), `toGeminiInlineParts`, `toMuseImageParts`; browser-only `downscaleImageFile` (1600px, JPEG 0.82), `fileToImageAttachment`, `clipboardItemsToFiles`. 13 `node:test` cases in `/lib/image-attachments.test.ts`.

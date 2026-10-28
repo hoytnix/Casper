@@ -633,13 +633,16 @@ ${routerScopeNote}`;
             q.includes('vite') || q.includes('entry') || q.includes('mount') ||
             q.includes('component') || q.includes('frontend') || q.includes('spa');
           if (viteQuery && (p.includes('vite.config') || p.includes('index.html') || p.includes('src/main') || p.includes('src/app'))) score += 0.3;
-          // Hono controller structures: routers, middleware, RPC & validators
+          // Hono controller structures: routers, middleware, RPC & validators.
+          // Role-label match only (`[hono-route]` / `[hono-middleware]`):
+          // a bare 'hono' substring also hits filenames and export names
+          // (e.g. framework-detector.ts), which are not Hono evidence.
           const skeleton = (item.skeleton || '').toLowerCase();
           const honoQuery =
             q.includes('hono') || q.includes('endpoint') || q.includes('route') ||
             q.includes('api') || q.includes('middleware') || q.includes('rpc') ||
             q.includes('validator');
-          if (honoQuery && skeleton.includes('hono')) score += 0.35;
+          if (honoQuery && skeleton.includes('[hono-')) score += 0.35;
           if (honoQuery && (p.includes('routes/') || p.includes('src/index') || p.endsWith('/app.ts') || p === 'src/app.ts' || p.includes('wrangler'))) score += 0.3;
 
           return { path: item.path, score };

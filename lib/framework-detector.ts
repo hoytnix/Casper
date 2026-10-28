@@ -1,5 +1,29 @@
 import type { SourceFile, DetectedFramework } from '@/types';
 
+// Matches a REAL Hono module import — `import { Hono } from 'hono'`,
+// `import 'hono/validator'`, `require('hono')` — anchored to import/require
+// statement syntax. Bare prose mentions ("mention hono/zod-validator in
+// docs") must NOT match: this repo's own compile-route system prompt
+// embeds Hono vocabulary, and substring scanning self-poisons on it.
+const HONO_BINDING_RE = String.raw`(?:const|let|var)\s+(?:[\w$]+|\{[^}]*\}|\[[^\]]*\])\s*=\s*`;
+const HONO_IMPORT_STATEMENT_RE = new RegExp(
+  `(?:^\\s*import\\b[^;]*?\\bfrom\\s*['"]hono(?:\\/[^'"]*)?['"]` +
+    `|^\\s*import\\s*['"]hono(?:\\/[^'"]*)?['"]` +
+    `|^\\s*(?:${HONO_BINDING_RE})?require\\(\\s*['"]hono(?:\\/[^'"]*)?['"]\\s*\\))`,
+  'm'
+);
+
+// Matches genuine Hono app construction (`const app = new Hono()` at
+// statement start), not prose ("call new Hono()") and not code quoted
+// inside another file's string literals (e.g. `*.test.ts` fixtures, which
+// embed Hono samples mid-line and ship in ingestion snapshots).
+const HONO_CONSTRUCT_RE = /^\s*(?:export\s+)?(?:const|let|var)\s+[\w$]+\s*=\s*new\s+Hono\s*\(/m;
+
+export function hasHonoImportStatement(content?: string): boolean {
+  if (!content) return false;
+  return HONO_IMPORT_STATEMENT_RE.test(content) || HONO_CONSTRUCT_RE.test(content);
+}
+
 /**
  * Robust framework auto-detection engine.
  * Inspects package.json dependencies, framework config files, and
@@ -60,27 +84,22 @@ export function detectRepositoryFramework(
       p === 'app.ts'
   );
 
+  // Statement-shaped import evidence only: bare prose mentions of Hono
+  // vocabulary (docs, comments, embedded prompt strings) must not flip the
+  // verdict — this repo's own compile route embeds such strings.
   const hasHonoImport = safeFiles.some(
-    (f) =>
-      f?.content &&
-      (f.content.includes("from 'hono'") ||
-        f.content.includes('from "hono"') ||
-        f.content.includes('require("hono")') ||
-        f.content.includes("require('hono')") ||
-        f.content.includes('new Hono(') ||
-        f.content.includes('hono/zod-validator') ||
-        f.content.includes('hono/client'))
+    (f) => f?.content && hasHonoImportStatement(f.content)
   );
 
+  // Route-call chains count only in files that also carry a real Hono
+  // import: `headers.get('content-type')` is a Web API, not a router.
   const hasHonoRouteCall = safeFiles.some(
     (f) =>
       f?.content &&
+      hasHonoImportStatement(f.content) &&
       /\.\s*(get|post|put|delete|patch|options|head|all|use|route)\s*\(\s*['"`/]/.test(
         f.content
-      ) &&
-      (f.content.includes('hono') ||
-        f.content.includes('new Hono(') ||
-        f.content.includes('Hono('))
+      )
   );
 
   if (hasHonoImport || hasHonoRouteCall || hasWrangler) {

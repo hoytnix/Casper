@@ -1,4 +1,5 @@
 import type { SourceFile } from '@/types';
+import { hasHonoImportStatement } from './framework-detector.ts';
 
 export interface NextJsFileCard {
   path: string;
@@ -36,18 +37,16 @@ function isStrongHonoFile(path: string, content?: string): boolean {
     return true;
   }
   if (!content) return false;
-  return (
-    content.includes("from 'hono'") ||
-    content.includes('from "hono"') ||
-    content.includes('hono/zod-validator') ||
-    content.includes('hono/client') ||
-    content.includes('new Hono(')
-  );
+  return hasHonoImportStatement(content);
 }
 
 function hasHonoRouteCallShape(content?: string): boolean {
   if (!content) return false;
-  return /\.\s*(get|post|put|delete|patch|options|head|all|use|route)\s*\(\s*['"`/]/.test(content);
+  // Route-path-shaped first argument only (`app.get('/users', ...)`).
+  // Bare `.get('content-type')` / `.use(mw)` Web API calls must not match.
+  // (Axios-style `.get('/x')` still matches here but is caught by role
+  // ordering below — hook/store/util win over this weak signal.)
+  return /\.\s*(get|post|put|delete|patch|options|head|all|use|route)\s*\(\s*['"`]\//.test(content);
 }
 
 function isViteConfigPath(path: string): boolean {
@@ -103,9 +102,6 @@ export function classifyNextJsRole(path: string, content?: string): NextJsFileCa
   if (p.includes('page.tsx') || p.includes('page.jsx')) return 'app-page';
   if (isViteComponentPath(path, content)) return 'vite-component';
   if (p.includes('action') || (content && content.includes("'use server'"))) return 'server-action';
-  // Weak Hono signal (method-call shape without an explicit hono import):
-  // checked after Next.js structural roles so pages/layouts/actions keep priority.
-  if (hasHonoRouteCallShape(content)) return 'hono-route';
   if (p.includes('hook') || p.startsWith('hooks/')) return 'hook';
   if (p.includes('store') || p.includes('state')) return 'store';
   if (p.includes('type') || p.includes('interfaces')) return 'types';
@@ -114,6 +110,10 @@ export function classifyNextJsRole(path: string, content?: string): NextJsFileCa
   }
   if (content && content.includes("'use client'")) return 'client-component';
   if (p.startsWith('lib/') || p.startsWith('utils/')) return 'util';
+  // Weak Hono signal LAST: structural Next.js roles (hook/store/types/
+  // config/util/client-component) all win over a bare method-call shape.
+  // Files with a real Hono import never reach here (strongHono returns early).
+  if (hasHonoRouteCallShape(content)) return 'hono-route';
   return 'server-component';
 }
 

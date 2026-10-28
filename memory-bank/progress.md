@@ -144,3 +144,8 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Persistence (`/hooks/useRepoStore.ts`): load validation + 4.5MB quota guard with strip-oldest/text-only fallback; StepLoader image badge (`/components/StepLoader.tsx`).
   - Hono boundary: repo is Next.js App Router, no Hono routers/bindings exist — invariants applied as Next.js Server/Client boundaries + Zod route contracts instead; no wrangler changes, no new secrets.
   - Verified: `tsc --noEmit` clean, `eslint` 0 errors, `pnpm build` green, 79/79 `node:test` pass (13 new), zero Node-only imports in client path, zero browser globals in route.
+|- [x] **False-Positive Hono Classification Fix (this repo is pure Next.js)**:
+  - Reproduced live: 6 phantom `hono-route` + 2 phantom `hono-middleware` roles; detector returned `hono` on the repo's own tree.
+  - Correction to the report: role counts never fed the detector/instruction choice — the flip came from substring scans hitting route.ts's embedded Hono prompt prose, then `*.test.ts` fixtures; fixed all three layers plus the router's bare-`hono` skeleton boost (now `[hono-` role-label only).
+  - Statement-shaped `hasHonoImportStatement()` shared by detector/indexer/code-graph (`/lib/framework-detector.ts`, `/lib/nextjs-indexer.ts`, `/lib/nextjs-code-graph.ts`, `/lib/local-context-router.ts`); 8 regression tests in `/lib/hono-detection.test.ts` (4 failed pre-fix).
+  - Verified: 87/87 `node:test` (8 new), `tsc` clean, `eslint` 0 errors, `pnpm build` green; probe now `nextjs`, zero Hono roles; stale persisted badge values self-heal on next compile.

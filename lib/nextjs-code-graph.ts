@@ -1,4 +1,5 @@
 import type { SourceFile } from '@/types';
+import { hasHonoImportStatement } from './framework-detector.ts';
 
 export interface CodeSymbol {
   name: string;
@@ -59,12 +60,9 @@ export function buildNextJsCodeGraph(files: SourceFile[]): NextJsCodeGraph {
       }
     }
     const hasUseServer = file.content.includes("'use server'") || file.content.includes('"use server"');
-    const isHonoFile =
-      file.content.includes("from 'hono'") ||
-      file.content.includes('from "hono"') ||
-      file.content.includes('hono/zod-validator') ||
-      file.content.includes('hono/client') ||
-      file.content.includes('new Hono(');
+    // Statement-shaped import evidence only — prose mentions of Hono
+    // vocabulary in comments/strings must not mint phantom route symbols.
+    const isHonoFile = hasHonoImportStatement(file.content);
 
     const routeMethods: string[] = [];
     const pageComponents: string[] = [];
