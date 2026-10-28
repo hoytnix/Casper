@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Loader2,
   Compass,
+  Cpu,
   Layers,
   Coins,
   Sparkles,
@@ -39,6 +40,7 @@ export interface WorkspaceHeaderProps {
   onToggleDrawer: () => void;
   onBranchChange: (newBranch: string) => void;
   onToggleMode: (newMode: IngestionMode) => void;
+  localJudgeLabel?: string;
 }
 
 // Workspace sub-header shell, extracted verbatim from RepoWorkspace:
@@ -57,6 +59,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
   onToggleDrawer,
   onBranchChange,
   onToggleMode,
+  localJudgeLabel,
 }) => {
   const getStatusBadge = () => {
     switch (progress.step) {
@@ -146,6 +149,17 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
         )}
 
         <span className="text-slate-700" aria-hidden="true">|</span>
+
+        {/* Active local judge label */}
+        {localJudgeLabel && (
+          <span
+            className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/25 text-emerald-300 text-xs font-mono font-semibold"
+            title="Active local relevance judge (int4, short context)"
+          >
+            <Cpu className="w-3 h-3 text-emerald-400" />
+            {localJudgeLabel}
+          </span>
+        )}
 
         {/* Branch Picker */}
         <div className="relative flex items-center">

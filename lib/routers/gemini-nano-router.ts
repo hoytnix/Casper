@@ -51,6 +51,19 @@ export function getNanoSession(): any {
   return cachedBaseSession;
 }
 
+// Human-readable availability copy for Settings. Nano stays
+// availability-varies and is never the default judge.
+export function nanoAvailabilityGuidance(status: string): string {
+  switch (status) {
+    case 'available':
+      return 'Gemini Nano is available in this Chrome profile. It is still never the default judge.';
+    case 'downloadable':
+      return 'Gemini Nano needs a one-time model download, then a restart. Availability varies by Chrome version and device.';
+    default:
+      return 'Gemini Nano is not exposed here (needs Chrome 138+ with built-in AI enabled). Availability varies; it is never the default.';
+  }
+}
+
 export async function checkGeminiNanoAvailability(): Promise<'available' | 'readily' | 'downloadable' | 'unsupported'> {
   if (typeof window === 'undefined') return 'unsupported';
   const lm = window.LanguageModel || window.ai?.languageModel;

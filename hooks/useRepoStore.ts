@@ -20,6 +20,20 @@ import {
 } from '@/lib/settings-store';
 
 export { DEFAULT_MODELS } from '@/lib/settings-store';
+export {
+  DEFAULT_LOCAL_CONTEXT_TOKENS,
+  DEFAULT_LOCAL_MODEL_ID,
+  LOCAL_ENGINE_VALUES,
+  LOCAL_MODELS,
+  SHORT_CONTEXT_NOTE,
+  getFittingModelsUnder2GB,
+  getLocalModelSpec,
+  isKnownRouterEngine,
+  isLocalGenerationEngine,
+  isTinyFilter,
+  requiresGatingNotice,
+  validateLocalContextTokens,
+} from '@/lib/settings-store';
 
 const STORAGE_KEYS = {
   REPOS: 'antigravity_repos_v1',

@@ -28,6 +28,7 @@ import {
   downloadSourceFiles,
 } from '@/lib/github';
 import { warmUpLocalContextRouter, routeNextJsContext } from '@/lib/local-context-router';
+import { getLocalModelSpec } from '@/lib/local-models';
 import { detectRepositoryFramework } from '@/lib/framework-detector';
 import { replaceAssistantContent } from '@/lib/utils';
 import { normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
@@ -115,9 +116,10 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
       const warmupFiles = snapshot.files;
       const warmupKey = `${repo.owner}/${repo.repo}-${repo.branch}`;
       const warmupEngine = settings.routerEngine || 'auto';
+      const warmupTokens = settings.localContextTokens ?? 1536;
       const runWarmup = () => {
         if (!isMounted) return;
-        warmUpLocalContextRouter(warmupFiles, warmupKey, warmupEngine).catch((e) =>
+        warmUpLocalContextRouter(warmupFiles, warmupKey, warmupEngine, undefined, warmupTokens).catch((e) =>
           console.warn('Local router pre-warm note:', e)
         );
       };
@@ -140,7 +142,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
       }
       if (timeoutHandle !== null) clearTimeout(timeoutHandle);
     };
-  }, [repo.owner, repo.repo, settings.githubPat, repo.branch, settings.routerEngine, snapshot]);
+  }, [repo.owner, repo.repo, settings.githubPat, repo.branch, settings.routerEngine, settings.localContextTokens, snapshot]);
 
   const { verifyOnOpen, prepareCompileFiles } = useRepoDeltaSync({
     repo,
@@ -290,7 +292,8 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               message: status,
               progressPercent: pct,
             }));
-          }
+          },
+          settings.localContextTokens ?? 1536
         );
 
         const targetedPaths = routingResult.selectedPaths;
@@ -305,6 +308,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           maxRounds: settings.maxAgenticRounds || 3,
           explorationTrail: [],
           toolTraces,
+          routerEngine: routerEngineUsed,
         });
 
         // Resolve full content for selected paths from activeFiles cache or download only missing files
@@ -390,6 +394,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           step: 'compiling_prompt',
           message: `Synthesizing Casper execution prompt via ${routerEngineUsed} (${routerLatencyMs}ms)...`,
           explorationTrail: [explorationStepRecord],
+          routerEngine: routerEngineUsed,
           ...(validImages.length > 0 ? { activeImageCount: validImages.length } : {}),
         });
 
@@ -512,6 +517,10 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
         onToggleDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
         onBranchChange={handleBranchChange}
         onToggleMode={handleToggleMode}
+        localJudgeLabel={(() => {
+          const spec = getLocalModelSpec(settings.routerEngine || 'auto');
+          return spec ? `${spec.displayName} · int4 · ${settings.localContextTokens ?? 1536} tok` : undefined;
+        })()}
       />
 
       {/* Main Workspace Body */}

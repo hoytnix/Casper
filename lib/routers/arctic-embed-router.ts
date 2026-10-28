@@ -2,6 +2,13 @@ import type { RoutingResult, RouterToolTrace, SourceFile } from '@/types';
 import type { NextJsFileCard } from '../nextjs-indexer';
 import type { NextJsCodeGraph } from '../nextjs-code-graph';
 import { expandWithNextJsImportClosure } from '../nextjs-indexer';
+
+// Embedding-only role: this router scores retrieval / first-pass ranking
+// over file skeletons. It is never a relevance judge — judging needs a
+// generation engine (MLC) or Nano. Documented here so the distinction
+// survives refactors.
+export const ARCTIC_ROLE_NOTE =
+  'EMBEDDING_ONLY: retrieval / first-pass scoring only, not a relevance judge.';
 import {
   findRelatedSymbols,
   traceCallGraph,

@@ -12,11 +12,17 @@ import {
   runNanoToolLoop,
 } from './routers/gemini-nano-router';
 import {
+  engineLabelForModelId,
   ensureQwenEngine,
   getMlcEngine,
   getMlcEngineModelId,
   runQwenToolLoop,
 } from './routers/qwen-mlc-router';
+import {
+  DEFAULT_LOCAL_CONTEXT_TOKENS,
+  isLocalGenerationEngine,
+  validateLocalContextTokens,
+} from './local-models';
 import {
   cosineSimilarity,
   ensureArcticPipeline,
@@ -69,7 +75,8 @@ export async function warmUpLocalContextRouter(
   files: SourceFile[],
   repoIdentifier: string,
   enginePreference: RouterEngineType = 'auto',
-  onProgress?: (statusText: string, progressPercent?: number) => void
+  onProgress?: (statusText: string, progressPercent?: number) => void,
+  localContextTokens: number = DEFAULT_LOCAL_CONTEXT_TOKENS
 ): Promise<{ nanoReady: boolean; arcticReady: boolean; qwenReady: boolean; totalFiles: number }> {
   if (onProgress) onProgress('Initializing local context router...', 5);
   const repoIndex = buildNextJsRepoIndex(files);
@@ -82,9 +89,11 @@ export async function warmUpLocalContextRouter(
   let arcticReady = false;
   let qwenReady = false;
 
-  // 1. Warm up Qwen-Coder MLC if explicitly selected
-  if (enginePreference === 'qwen-0.5b-coder-mlc' || enginePreference === 'qwen-1.5b-coder-mlc') {
-    qwenReady = await ensureQwenEngine(enginePreference, onProgress);
+  // 1. Warm up the selected MLC generation engine, if any. Warms only
+  // the selected engine — never all models — at short context.
+  const contextTokens = validateLocalContextTokens(localContextTokens);
+  if (isLocalGenerationEngine(enginePreference)) {
+    qwenReady = await ensureQwenEngine(enginePreference, onProgress, contextTokens);
   }
 
   // 2. Warm up Tier 1 Gemini Nano Session with Graph-Aware Unix tools capability
@@ -107,7 +116,8 @@ export async function routeNextJsContext(
   repoIdentifier: string,
   enginePreference: RouterEngineType = 'auto',
   maxExtraFiles: number = 6,
-  onProgress?: (statusText: string, progressPercent?: number) => void
+  onProgress?: (statusText: string, progressPercent?: number) => void,
+  localContextTokens: number = DEFAULT_LOCAL_CONTEXT_TOKENS
 ): Promise<RoutingResult> {
   const startTime = performance.now();
   const repoIndex = buildNextJsRepoIndex(files);
@@ -123,9 +133,9 @@ export async function routeNextJsContext(
   }
 
   // ==========================================
-  // TIER 0: QWEN CODER MLC ROUTER (If requested)
+  // TIER 0: MLC GENERATION JUDGE (if a generation engine is selected)
   // ==========================================
-  if ((enginePreference === 'qwen-0.5b-coder-mlc' || enginePreference === 'qwen-1.5b-coder-mlc')) {
+  if (isLocalGenerationEngine(enginePreference)) {
     const qwenResult = await runQwenToolLoop({
       files,
       repoIndex,
@@ -140,6 +150,7 @@ export async function routeNextJsContext(
       startTime,
       toolTraces,
       onProgress,
+      localContextTokens: validateLocalContextTokens(localContextTokens),
     });
     if (qwenResult) return qwenResult;
   }
@@ -331,9 +342,7 @@ export async function generateSuggestedDirectives(
     const systemPrompt = `You are a senior software architect. Produce EXACTLY 4 fresh Suggested Architectural Directives grounded in this repo (nonce ${nonce} at ${new Date().toISOString()} — vary wording and order every call).\nRepo: ${repoIdentifier} (${files.length} files; roles ${roleLine}).\nGraph: ${compactSummary}\n${graphSummary}\nRelated: ${anchorHint}\nReturn STRICT JSON array of 4 objects with keys title (8-90 chars), prompt (20-500 chars, exact chat input), rationale (<=280 chars), anchorPaths (1-3 REAL paths from: ${validPaths.slice(0, 20).join(', ')}). No markdown fences, no extra keys.`;
 
     const allowsQwen =
-      enginePreference === 'auto' ||
-      enginePreference === 'qwen-0.5b-coder-mlc' ||
-      enginePreference === 'qwen-1.5b-coder-mlc';
+      enginePreference === 'auto' || isLocalGenerationEngine(enginePreference);
     const allowsNano = enginePreference === 'auto' || enginePreference === 'gemini-nano-only';
     const allowsArctic = enginePreference === 'auto' || enginePreference === 'arctic-embed-xs-only';
 
@@ -351,7 +360,7 @@ export async function generateSuggestedDirectives(
         });
         const responseText = reply.choices?.[0]?.message?.content || '[]';
         const parsed = parseJsonArray(responseText);
-        const candidates = groundCandidates(parsed, getMlcEngineModelId().includes('1.5B') ? 'Qwen2.5-Coder-1.5B' : 'Qwen2.5-Coder-0.5B', validPaths, relatedPaths);
+        const candidates = groundCandidates(parsed, engineLabelForModelId(getMlcEngineModelId()), validPaths, relatedPaths);
         const checked = sanitizeDirectives(candidates, relatedPaths);
         if (!checked.isFallback && checked.directives.length > 0) {
           const list = checked.directives.slice(0, 4);

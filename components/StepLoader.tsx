@@ -60,6 +60,11 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
               Round {progress.currentRound} of {progress.maxRounds}
             </span>
           )}
+          {progress.routerEngine && (
+            <span className="text-xs font-mono text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+              {progress.routerEngine} · short context 1536 tok
+            </span>
+          )}
         </div>
       </div>
 

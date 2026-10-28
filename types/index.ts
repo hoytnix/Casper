@@ -230,6 +230,8 @@ export interface AppSettings {
   defaultMode?: IngestionMode;
   maxAgenticRounds?: number;
   routerEngine?: RouterEngineType;
+  selectedLocalModelId?: string;
+  localContextTokens?: number;
   models?: ModelConfig[];
   requestTimeout?: number;
 }
@@ -266,6 +268,7 @@ export interface IngestionProgress {
   progressPercent?: number;
   activeImageCount?: number;
   compileId?: string;
+  routerEngine?: string;
 }
 
 export interface NextJsFileCard {
@@ -315,12 +318,45 @@ export interface NextJsCodeGraph {
   };
 }
 
-export type RouterEngineType = 
-  | 'auto' 
-  | 'gemini-nano-only' 
-  | 'arctic-embed-xs-only' 
-  | 'qwen-0.5b-coder-mlc' 
-  | 'qwen-1.5b-coder-mlc';
+export type RouterEngineType =
+  | 'auto'
+  | 'gemini-nano-only'
+  | 'arctic-embed-xs-only'
+  | 'qwen-0.5b-coder-mlc'
+  | 'qwen-1.5b-coder-mlc'
+  | 'qwen3-0.6b-int4'
+  | 'llama-3.2-1b-int4'
+  | 'smollm2-1.7b-int4'
+  | 'smollm2-360m-int4'
+  | 'gemma-3-270m-int4';
+
+export type LocalModelFit =
+  | 'FITS'
+  | 'CEILING'
+  | 'TINY_FILTER'
+  | 'EMBEDDING_ONLY'
+  | 'CHROME_BUILTIN'
+  | 'BLOCKED';
+
+export interface LocalModelSpec {
+  id: RouterEngineType;
+  displayName: string;
+  paramsLabel: string;
+  quantizationLabel: 'int4';
+  downloadSizeApprox: string;
+  ramTotalApproxShortContext: string;
+  ramNote: string;
+  minDeviceGuidance: string;
+  fitBadge: LocalModelFit;
+  runtimeLabel: string;
+  bestFor: string;
+  warning?: string;
+  gated?: boolean;
+  desktopOnly?: boolean;
+  verified: boolean;
+  mlcModelId?: string;
+  onnxModelId?: string;
+}
 
 export type MuseThinkingLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type GeminiThinkingLevel = 'low' | 'medium' | 'high';

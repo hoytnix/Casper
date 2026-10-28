@@ -213,3 +213,7 @@ Fixed the Muse `web_search` 400 by routing grounded Muse calls to the Responses 
 - **Client (`/components/RepoWorkspace.tsx`)**: SSE loop splits JSON-parse (warn + continue) from event handling so server `error` events throw cleanly instead of also logging a bogus `Could not parse SSE event` warn.
 - **Settings (`/app/settings/page.tsx`)**: grounding copy now reads Muse-via-Responses + Gemini `googleSearch`.
 - Verified: 66/66 `node:test` pass (4 new Responses cases), `tsc --noEmit` clean, `eslint` clean on touched files, `pnpm build` green.
+Local-judge registry expansion DONE (uncommitted):
+- 10-card Settings registry live with Qwen3 0.6B int4 as default judge at short context 1536 (clamped 1024-2048); one generation model resident at a time with unload-on-switch; Gemma 3 270M BLOCKED/gated.
+- Verified green: 130/130 `node:test`, `tsc --noEmit`, `eslint` 0 errors, `pnpm build`.
+- Open: browser-side load + 4GB Chromebook RAM deltas unmeasured (no browser here) — do not claim FITS deltas until measured; per-model test steps are in the session final report.

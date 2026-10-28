@@ -1,6 +1,27 @@
 import type { AppSettings, ModelConfig } from '@/types';
-import { normalizeThinkingLevel, normalizeThinkingSummaries } from './thinking-levels';
-import { normalizeSearchContextSize } from './search-grounding';
+import { normalizeThinkingLevel, normalizeThinkingSummaries } from './thinking-levels.ts';
+import { normalizeSearchContextSize } from './search-grounding.ts';
+import {
+  DEFAULT_LOCAL_CONTEXT_TOKENS,
+  DEFAULT_LOCAL_MODEL_ID,
+  isKnownRouterEngine,
+  validateLocalContextTokens,
+} from './local-models.ts';
+
+export {
+  DEFAULT_LOCAL_CONTEXT_TOKENS,
+  DEFAULT_LOCAL_MODEL_ID,
+  LOCAL_ENGINE_VALUES,
+  LOCAL_MODELS,
+  SHORT_CONTEXT_NOTE,
+  getFittingModelsUnder2GB,
+  getLocalModelSpec,
+  isKnownRouterEngine,
+  isLocalGenerationEngine,
+  isTinyFilter,
+  requiresGatingNotice,
+  validateLocalContextTokens,
+} from './local-models.ts';
 
 // Settings persistence, extracted verbatim from useRepoStore: model
 // defaults, settings defaults, and stored-settings normalization
@@ -90,7 +111,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   preferredModel: 'gemini-4-argon',
   defaultMode: 'agentic',
   maxAgenticRounds: 3,
-  routerEngine: 'auto',
+  routerEngine: 'qwen3-0.6b-int4',
+  selectedLocalModelId: 'qwen3-0.6b-int4',
+  localContextTokens: DEFAULT_LOCAL_CONTEXT_TOKENS,
   models: DEFAULT_MODELS,
   requestTimeout: 60,
 };
@@ -122,9 +145,27 @@ export function normalizeStoredSettings(parsed: Record<string, unknown>): AppSet
     parsed.defaultMode = 'agentic';
   }
 
+  // Router engine allowlist: 5 existing + 5 new values. Unknown persisted
+  // values fall back to auto, never throw.
+  const routerEngine = isKnownRouterEngine(parsed.routerEngine)
+    ? parsed.routerEngine
+    : 'auto';
+
+  // Backfill the local-judge selection without overwriting an explicit
+  // user choice; legacy settings land on auto + 1536.
+  const selectedLocalModelId =
+    typeof parsed.selectedLocalModelId === 'string' && isKnownRouterEngine(parsed.selectedLocalModelId)
+      ? parsed.selectedLocalModelId
+      : isKnownRouterEngine(routerEngine) && routerEngine !== 'auto'
+        ? routerEngine
+        : DEFAULT_LOCAL_MODEL_ID;
+
   return {
     ...DEFAULT_SETTINGS,
     ...parsed,
+    routerEngine,
+    selectedLocalModelId,
+    localContextTokens: validateLocalContextTokens(parsed.localContextTokens),
     // Grounding is opt-in: only an explicit true survives reloads,
     // and the size is coerced to the low/medium/high union.
     searchGrounding: parsed.searchGrounding === true,

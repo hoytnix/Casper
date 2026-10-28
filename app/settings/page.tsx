@@ -18,9 +18,11 @@ import {
   Save,
   Globe,
 } from 'lucide-react';
-import { useRepoStore, DEFAULT_MODELS } from '@/hooks/useRepoStore';
+import { useRepoStore, DEFAULT_MODELS, LOCAL_MODELS, DEFAULT_LOCAL_CONTEXT_TOKENS, validateLocalContextTokens } from '@/hooks/useRepoStore';
 import { checkGeminiNanoAvailability, warmUpLocalContextRouter } from '@/lib/local-context-router';
+import { nanoAvailabilityGuidance } from '@/lib/routers/gemini-nano-router';
 import { Header } from '@/components/Header';
+import { LocalModelCards } from '@/components/LocalModelCards';
 import { RouterEngineType, ModelConfig, ThinkingLevel, ThinkingSummaryMode, SearchContextSize } from '@/types';
 import { MUSE_THINKING_LEVELS, normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
 import { normalizeSearchContextSize, SEARCH_CONTEXT_SIZES } from '@/lib/search-grounding';
@@ -154,7 +156,13 @@ export default function SettingsPage() {
   const [museApiKey, setMuseApiKey] = useState(settings.museApiKey || '');
   const [maxRounds, setMaxRounds] = useState<number>(settings.maxAgenticRounds || 3);
   const [requestTimeout, setRequestTimeout] = useState<number>(settings.requestTimeout || 60);
-  const [routerEngine, setRouterEngine] = useState<RouterEngineType>(settings.routerEngine || 'auto');
+  const [routerEngine, setRouterEngine] = useState<RouterEngineType>(settings.routerEngine || 'qwen3-0.6b-int4');
+  const [selectedLocalModel, setSelectedLocalModel] = useState<string>(
+    settings.selectedLocalModelId || settings.routerEngine || 'qwen3-0.6b-int4'
+  );
+  const [localContextTokens, setLocalContextTokens] = useState<number>(
+    validateLocalContextTokens(settings.localContextTokens ?? DEFAULT_LOCAL_CONTEXT_TOKENS)
+  );
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(
     normalizeThinkingLevel(settings.thinkingLevel)
   );
@@ -232,6 +240,8 @@ export default function SettingsPage() {
       searchContextSize,
       maxAgenticRounds: maxRounds,
       routerEngine,
+      selectedLocalModelId: selectedLocalModel,
+      localContextTokens: validateLocalContextTokens(localContextTokens),
       models,
       preferredModel: models.find((m) => m.enabled)?.tag || 'gemini-4-argon',
       requestTimeout,
@@ -320,15 +330,38 @@ export default function SettingsPage() {
                   <label className="text-xs text-slate-300 block">Router Engine Preference</label>
                   <select
                     value={routerEngine}
-                    onChange={(e) => setRouterEngine(e.target.value as RouterEngineType)}
+                    onChange={(e) => {
+                      const next = e.target.value as RouterEngineType;
+                      setRouterEngine(next);
+                      setSelectedLocalModel(next);
+                    }}
                     className="w-full bg-slate-900 border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-200 outline-none focus:border-sky-500"
                   >
-                    <option value="auto">Auto (Gemini Nano ➔ Arctic / Qwen)</option>
-                    <option value="gemini-nano-only">Gemini Nano Only (Chrome Built-in AI)</option>
-                    <option value="arctic-embed-xs-only">Arctic Embed XS Only (Transformers.js)</option>
-                    <option value="qwen-0.5b-coder-mlc">Qwen2.5-Coder-0.5B-Instruct (MLC WebGPU)</option>
-                    <option value="qwen-1.5b-coder-mlc">Qwen2.5-Coder-1.5B-Instruct (MLC WebGPU)</option>
+                    {LOCAL_MODELS.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.displayName} ({m.runtimeLabel})
+                      </option>
+                    ))}
                   </select>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-slate-300">
+                    <span>Local context (clamped 1024-2048)</span>
+                    <span className="font-mono text-sky-400">{localContextTokens} tokens</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1024"
+                    max="2048"
+                    step="128"
+                    value={localContextTokens}
+                    onChange={(e) => setLocalContextTokens(validateLocalContextTokens(parseInt(e.target.value, 10)))}
+                    className="w-full accent-sky-500 cursor-pointer"
+                  />
+                  <p className="text-[11px] font-mono text-slate-500">
+                    Default 1536. Short context keeps every judge under 2GB.
+                  </p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-900/90 border border-white/[0.06] space-y-3 text-xs">
@@ -338,6 +371,9 @@ export default function SettingsPage() {
                       {nanoStatus.toUpperCase()}
                     </span>
                   </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    {nanoAvailabilityGuidance(nanoStatus)}
+                  </p>
                   <div className="pt-2 flex flex-col gap-2 border-t border-white/[0.08]">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-slate-300">Pre-warm embedding pipeline &amp; session</span>
@@ -349,7 +385,7 @@ export default function SettingsPage() {
                           try {
                             await warmUpLocalContextRouter([], 'global-warmup', routerEngine, (status, pct) => {
                               setWarmupNotice(pct !== undefined ? `${status} (${pct}%)` : status);
-                            });
+                            }, localContextTokens);
                             setWarmupNotice('Local AI context router successfully warmed up!');
                           } catch (e) {
                             setWarmupNotice(`Warmup notice: ${e instanceof Error ? e.message : String(e)}`);
@@ -371,6 +407,30 @@ export default function SettingsPage() {
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Local Model Registry: 10 verbose judge cards */}
+              <div className="glass-panel p-6 rounded-2xl border border-white/[0.08] space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-bold text-white flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-emerald-400" />
+                    Local Relevance Judges (int4, short context)
+                  </label>
+                  <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    10 cards
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Default judge is Qwen3 0.6B int4 at 1536 tokens. Select a card, then Save All Changes to persist it across reloads. Loading a card loads its weights now; switching unloads the previous generation model — only one is resident at a time.
+                </p>
+                <LocalModelCards
+                  selectedId={selectedLocalModel}
+                  localContextTokens={localContextTokens}
+                  onSelect={(id) => {
+                    setSelectedLocalModel(id);
+                    setRouterEngine(id);
+                  }}
+                />
               </div>
             </div>
 

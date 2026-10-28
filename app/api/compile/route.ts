@@ -58,7 +58,11 @@ export async function POST(req: NextRequest) {
       requestTimeout = 60,
       searchGrounding: rawSearchGrounding,
       searchContextSize: rawSearchContextSize,
+      routerEngine: rawRouterEngine,
     } = body;
+    // Telemetry only: the client already forwards the local router engine
+    // string with every compile POST. Server synthesis is unchanged by it.
+    void (typeof rawRouterEngine === 'string' ? rawRouterEngine : '');
 
     const maxRounds = Math.min(Math.max(1, Number(rawMaxRounds) || 3), 4);
 
