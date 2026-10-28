@@ -1,7 +1,17 @@
 node_modules/
 .next/
+out/
+dist/
+build/
 coverage/
 .DS_Store
+Thumbs.db
 *.log
 .env*
 !.env.example
+*.tsbuildinfo
+.vercel/
+.firebase/
+.idea/
+*.swp
+*~
