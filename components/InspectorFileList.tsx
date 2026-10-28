@@ -11,6 +11,7 @@ import {
   Search,
 } from 'lucide-react';
 import type { IngestionSnapshot, SourceFile } from '@/types';
+import { filterFilesByQuery } from '@/lib/filter-helpers';
 
 export interface InspectorExcludesProps {
   excludedPatterns: string[];
@@ -112,34 +113,57 @@ export const InspectorExcludes: React.FC<InspectorExcludesProps> = ({
   );
 };
 
+// One file row: memoized so filter keystrokes only re-render rows whose
+// file actually changed, not the whole (capped) list.
+const InspectorFileRow: React.FC<{ file: SourceFile }> = React.memo(({ file }) => {
+  return (
+    <div className="group flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-900/80 text-xs transition">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <InspectorFileIcon path={file.path} />
+        <span className="font-mono text-slate-300 truncate" title={file.path}>
+          {file.path}
+        </span>
+      </div>
+      <span className="font-mono text-[10px] text-slate-500 group-hover:text-slate-400 flex-shrink-0">
+        {formatFileSize(file.size)}
+      </span>
+    </div>
+  );
+});
+InspectorFileRow.displayName = 'InspectorFileRow';
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = (bytes / 1024).toFixed(1);
+  return `${kb} KB`;
+}
+
+function InspectorFileIcon({ path }: { path: string }) {
+  if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.js') || path.endsWith('.jsx')) {
+    return <FileCode className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />;
+  }
+  if (path.endsWith('.json')) {
+    return <FileJson className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />;
+  }
+  if (path.endsWith('.css') || path.endsWith('.scss')) {
+    return <Hash className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />;
+  }
+  return <FileText className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />;
+}
+
 // File search + sized file list with per-extension icons.
 export const InspectorFileList: React.FC<InspectorFileListProps> = ({
   files,
   snapshot,
 }) => {
   const [fileFilter, setFileFilter] = useState('');
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    const kb = (bytes / 1024).toFixed(1);
-    return `${kb} KB`;
-  };
-
-  const getFileIcon = (path: string) => {
-    if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.js') || path.endsWith('.jsx')) {
-      return <FileCode className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />;
-    }
-    if (path.endsWith('.json')) {
-      return <FileJson className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />;
-    }
-    if (path.endsWith('.css') || path.endsWith('.scss')) {
-      return <Hash className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />;
-    }
-    return <FileText className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />;
-  };
-
-  const filteredFiles = files.filter((f) =>
-    f.path.toLowerCase().includes(fileFilter.toLowerCase())
+  // Deferred query keeps the filter input responsive (low INP) while a
+  // thousand-file list re-filters; the visible rows stay capped (see
+  // filterFilesByQuery) so a keystroke never renders the whole tree.
+  const deferredFilter = React.useDeferredValue(fileFilter);
+  const { visible: filteredFiles, total: filteredTotal } = React.useMemo(
+    () => filterFilesByQuery(files, deferredFilter),
+    [files, deferredFilter]
   );
 
   return (
@@ -156,23 +180,15 @@ export const InspectorFileList: React.FC<InspectorFileListProps> = ({
           />
         </div>
 
+        {filteredTotal > filteredFiles.length && (
+          <div className="mb-2 text-[10px] font-mono text-slate-500">
+            Showing {filteredFiles.length} of {filteredTotal.toLocaleString()} files — refine the filter.
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto space-y-1 pr-1">
           {filteredFiles.length > 0 ? (
             filteredFiles.map((file) => (
-              <div
-                key={file.path}
-                className="group flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-900/80 text-xs transition"
-              >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  {getFileIcon(file.path)}
-                  <span className="font-mono text-slate-300 truncate" title={file.path}>
-                    {file.path}
-                  </span>
-                </div>
-                <span className="font-mono text-[10px] text-slate-500 group-hover:text-slate-400 flex-shrink-0">
-                  {formatFileSize(file.size)}
-                </span>
-              </div>
+              <InspectorFileRow key={file.path} file={file} />
             ))
           ) : (
             <div className="py-8 text-center text-xs text-slate-500 leading-relaxed">

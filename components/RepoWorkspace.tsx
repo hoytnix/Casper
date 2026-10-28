@@ -106,16 +106,39 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
     // (ChatCompiler calls generateSuggestedDirectives locally — no server
     // /api/compile fetch, no API cost, offline-safe). Fire-and-forget: no
     // blocking await. No wrangler binding sync needed (N/A, local-only).
+    // Deferred to idle: mount-time embedding saturated the main thread and
+    // overlapped first keystrokes (the multi-second input-delay outlier in
+    // INP traces), so it must never run inside the mount commit.
+    let idleHandle: number | null = null;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     if (snapshot && snapshot.files && snapshot.files.length > 0) {
-      warmUpLocalContextRouter(
-        snapshot.files,
-        `${repo.owner}/${repo.repo}-${repo.branch}`,
-        settings.routerEngine || 'auto'
-      ).catch((e) => console.warn('Local router pre-warm note:', e));
+      const warmupFiles = snapshot.files;
+      const warmupKey = `${repo.owner}/${repo.repo}-${repo.branch}`;
+      const warmupEngine = settings.routerEngine || 'auto';
+      const runWarmup = () => {
+        if (!isMounted) return;
+        warmUpLocalContextRouter(warmupFiles, warmupKey, warmupEngine).catch((e) =>
+          console.warn('Local router pre-warm note:', e)
+        );
+      };
+      const w = window as Window & {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+        cancelIdleCallback?: (handle: number) => void;
+      };
+      if (typeof w.requestIdleCallback === 'function') {
+        idleHandle = w.requestIdleCallback(runWarmup, { timeout: 3000 });
+      } else {
+        timeoutHandle = setTimeout(runWarmup, 1500);
+      }
     }
 
     return () => {
       isMounted = false;
+      if (idleHandle !== null) {
+        const w = window as Window & { cancelIdleCallback?: (handle: number) => void };
+        if (typeof w.cancelIdleCallback === 'function') w.cancelIdleCallback(idleHandle);
+      }
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
     };
   }, [repo.owner, repo.repo, settings.githubPat, repo.branch, settings.routerEngine, snapshot]);
 
@@ -458,6 +481,21 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
     }
   };
 
+  // Stable retry dispatcher: ChatCompiler's memoized bubbles compare
+  // onRetryPrompt by identity, and an inline arrow here would be a new
+  // function every Workspace render (progress ticks during streaming),
+  // busting every bubble's memo. The ref always calls the latest compile
+  // closure; synced in an effect (never a render-time ref write).
+  const handleCompilePromptRef = React.useRef<
+    (promptText: string, images?: ImageAttachment[]) => Promise<void>
+  >(async () => {});
+  React.useEffect(() => {
+    handleCompilePromptRef.current = handleCompilePrompt;
+  });
+  const stableRetryPrompt = React.useCallback((promptText: string) => {
+    void handleCompilePromptRef.current(promptText);
+  }, []);
+
 
   return (
     <div className="flex-1 flex flex-col min-h-0 h-[calc(100vh-3.75rem)]">
@@ -500,9 +538,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             setMessages(next);
             saveMessages(repo.id, next);
           }}
-          onRetryPrompt={(promptText) => {
-            handleCompilePrompt(promptText);
-          }}
+          onRetryPrompt={stableRetryPrompt}
           snapshot={snapshot}
         />
       </div>

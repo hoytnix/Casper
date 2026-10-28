@@ -10,9 +10,10 @@ export interface FinanceModelBreakdownProps {
 
 // Per-model cost proportion bars, extracted verbatim from
 // FinanceWorkspace. Pure derivation display over the cost summary.
-export const FinanceModelBreakdown: React.FC<FinanceModelBreakdownProps> = ({
+// Memoized alongside FinanceTrendChart: same search-keystroke parent.
+export const FinanceModelBreakdown: React.FC<FinanceModelBreakdownProps> = React.memo(function FinanceModelBreakdown({
   summary,
-}) => {
+}) {
   return (
     <div className="glass-panel p-6 rounded-2xl border border-white/[0.08] flex flex-col justify-between">
       <div>
@@ -61,4 +62,4 @@ export const FinanceModelBreakdown: React.FC<FinanceModelBreakdownProps> = ({
       </div>
     </div>
   );
-};
+});

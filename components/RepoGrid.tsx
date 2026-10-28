@@ -19,12 +19,19 @@ export const RepoGrid: React.FC<RepoGridProps> = ({
   onOpenAddModal,
 }) => {
   const [search, setSearch] = useState('');
+  // Deferred query keeps the search input responsive (low INP) while the
+  // card grid re-filters; memoized cards (see RepoCard) skip unchanged rows.
+  const deferredSearch = React.useDeferredValue(search);
 
-  const filteredRepos = repos.filter(
-    (r) =>
-      r.owner.toLowerCase().includes(search.toLowerCase()) ||
-      r.repo.toLowerCase().includes(search.toLowerCase()) ||
-      (r.description && r.description.toLowerCase().includes(search.toLowerCase()))
+  const filteredRepos = React.useMemo(
+    () =>
+      repos.filter(
+        (r) =>
+          r.owner.toLowerCase().includes(deferredSearch.toLowerCase()) ||
+          r.repo.toLowerCase().includes(deferredSearch.toLowerCase()) ||
+          (r.description && r.description.toLowerCase().includes(deferredSearch.toLowerCase()))
+      ),
+    [repos, deferredSearch]
   );
 
   return (

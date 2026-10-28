@@ -11,7 +11,8 @@ import {
 import {
   sanitizeLoadedMessages,
   formatMessagesForSave,
-  persistChatMessages,
+  schedulePersistChatMessages,
+  cancelScheduledPersist,
 } from '@/lib/chat-storage';
 import {
   DEFAULT_SETTINGS,
@@ -293,10 +294,16 @@ export function useRepoStore() {
   const saveMessages = (repoId: string, messages: ChatMessage[]) => {
     const deduped = formatMessagesForSave(messages);
     setChatHistory((prev) => ({ ...prev, [repoId]: deduped }));
-    persistChatMessages(STORAGE_KEYS.CHATS_PREFIX + repoId, deduped);
+    // Storage write leaves the keydown path: state (above) stays
+    // synchronous so the UI and cache are instant; the multi-MB stringify
+    // + disk write lands idle (see schedulePersistChatMessages).
+    schedulePersistChatMessages(STORAGE_KEYS.CHATS_PREFIX + repoId, deduped);
   };
 
   const deleteMessage = (repoId: string, messageId: string) => {
+    // Cancel first: a still-pending deferred save would otherwise resurrect
+    // the pre-delete history after this synchronous removal.
+    cancelScheduledPersist(STORAGE_KEYS.CHATS_PREFIX + repoId);
     setChatHistory((prev) => {
       const current = prev[repoId] || [];
       const updated = current.filter((m) => m.id !== messageId);
@@ -310,6 +317,8 @@ export function useRepoStore() {
   };
 
   const clearMessages = (repoId: string) => {
+    // Same resurrection guard as deleteMessage above.
+    cancelScheduledPersist(STORAGE_KEYS.CHATS_PREFIX + repoId);
     setChatHistory((prev) => ({ ...prev, [repoId]: [] }));
     try {
       localStorage.removeItem(STORAGE_KEYS.CHATS_PREFIX + repoId);

@@ -21,7 +21,12 @@ export interface FinanceLedgerTableProps {
 // Token cost records ledger, extracted verbatim from FinanceWorkspace:
 // filter controls, records table with cached-input column, and per-row
 // delete. All state lives in the parent; this is display + events only.
-export const FinanceLedgerTable: React.FC<FinanceLedgerTableProps> = ({
+// Memoized: the parent holds the search input, so every search keystroke
+// re-renders the parent — without this, each keystroke reconciles the full
+// table (the span/button renders in the INP trace). Props keep identity
+// until records/filters actually change (parent memos them + uses a
+// deferred query), so the default shallow compare skips.
+export const FinanceLedgerTable: React.FC<FinanceLedgerTableProps> = React.memo(function FinanceLedgerTable({
   records,
   hasRecords,
   isLoading,
@@ -33,7 +38,7 @@ export const FinanceLedgerTable: React.FC<FinanceLedgerTableProps> = ({
   uniqueModels,
   onClearAll,
   onDeleteRecord,
-}) => {
+}) {
   return (
     <div className="glass-panel rounded-2xl border border-white/[0.08] overflow-hidden">
       {/* Table Header Controls */}
@@ -171,4 +176,4 @@ export const FinanceLedgerTable: React.FC<FinanceLedgerTableProps> = ({
       </div>
     </div>
   );
-};
+});

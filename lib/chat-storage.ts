@@ -1,6 +1,6 @@
 import type { ChatMessage, ImageAttachment } from '@/types';
-import { imageAttachmentSchema } from './image-attachments';
-import { formatCompiledPrompt, extractSuggestedRefactors, dedupeConsecutiveAssistantMessages } from './utils';
+import { imageAttachmentSchema } from './image-attachments.ts';
+import { formatCompiledPrompt, extractSuggestedRefactors, dedupeConsecutiveAssistantMessages } from './utils.ts';
 
 // Chat-history persistence helpers, extracted verbatim from useRepoStore:
 // load-time sanitizing, save-time formatting, and the image-quota budget.
@@ -86,11 +86,32 @@ export function sanitizeLoadedMessages(parsed: ChatMessage[]): ChatMessage[] {
   return dedupeConsecutiveAssistantMessages(sanitized);
 }
 
+// Fast-path probe for the save pipeline below: the full formatter runs
+// several regexes (plus JSON.parse attempts) over the whole prompt. When
+// the content carries none of the marker sequences (`---` for the
+// SUGGESTED_REFACTORS delimiter, 2+ backticks/tildes for code fences),
+// every one of those patterns provably cannot match, so the formatted
+// output is exactly `content.trim()` with no extracted refactors. Skipping
+// the regex suite keeps submit keydowns (which save synchronously) fast.
+export function needsPromptFormatting(content: string): boolean {
+  return /(`{2,}|~{2,}|---)/.test(content);
+}
+
 // Save pipeline: formats assistant prompts, then collapses twin assistant
 // bubbles before state or storage sees them.
 export function formatMessagesForSave(messages: ChatMessage[]): ChatMessage[] {
   const formatted = messages.map((m) => {
     if (m.role === 'assistant') {
+      if (!needsPromptFormatting(m.content || '')) {
+        return {
+          ...m,
+          content: (m.content || '').trim(),
+          suggestedRefactors:
+            m.suggestedRefactors && m.suggestedRefactors.length > 0
+              ? m.suggestedRefactors
+              : undefined,
+        };
+      }
       const { cleanPrompt, refactors } = extractSuggestedRefactors(m.content);
       const content = formatCompiledPrompt(cleanPrompt);
       const suggestedRefactors =
@@ -141,5 +162,66 @@ export function persistChatMessages(storageKey: string, messages: ChatMessage[])
     }
   } catch (e) {
     console.warn('Failed to persist chat messages to localStorage:', e);
+  }
+}
+
+type PersistWriter = (storageKey: string, messages: ChatMessage[]) => void;
+
+// Coalesced pending writes, keyed by storage key: a newer save for the
+// same repo supersedes the older one, so rapid successive saves (submit
+// echo, error notice, stream finalization) perform a single write of the
+// latest messages.
+const pendingPersists = new Map<string, { cancel: () => void }>();
+
+// Idle-deferred persist: JSON.stringify of image-carrying histories plus
+// the localStorage write runs synchronously in submit keydowns today,
+// blocking the next paint for hundreds of ms (the keydown INP trace).
+// Scheduling after paint keeps state updates instant while the write
+// still lands via idle callback (2s timeout backstop) or a macrotask
+// fallback. Never throws; falls back to a synchronous write only when
+// scheduling itself fails, so the write is never lost.
+export function schedulePersistChatMessages(
+  storageKey: string,
+  messages: ChatMessage[],
+  writer: PersistWriter = persistChatMessages
+): void {
+  try {
+    pendingPersists.get(storageKey)?.cancel();
+    pendingPersists.delete(storageKey);
+    const fire = () => {
+      pendingPersists.delete(storageKey);
+      writer(storageKey, messages);
+    };
+    const w =
+      typeof window !== 'undefined'
+        ? (window as Window & {
+            requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+            cancelIdleCallback?: (handle: number) => void;
+          })
+        : undefined;
+    if (w && typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(fire, { timeout: 2000 });
+      pendingPersists.set(storageKey, {
+        cancel: () => {
+          if (typeof w.cancelIdleCallback === 'function') w.cancelIdleCallback(id);
+        },
+      });
+    } else {
+      const id = setTimeout(fire, 0);
+      pendingPersists.set(storageKey, { cancel: () => clearTimeout(id) });
+    }
+  } catch {
+    persistChatMessages(storageKey, messages);
+  }
+}
+
+// Drops a scheduled write without firing it. Callers that synchronously
+// overwrite or remove the same key (message delete, history clear) must
+// cancel first, or the stale deferred write would resurrect old messages.
+export function cancelScheduledPersist(storageKey: string): void {
+  try {
+    pendingPersists.get(storageKey)?.cancel();
+  } finally {
+    pendingPersists.delete(storageKey);
   }
 }

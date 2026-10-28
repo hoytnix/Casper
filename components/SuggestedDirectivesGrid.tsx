@@ -29,13 +29,16 @@ export interface SuggestedDirectivesGridProps {
 // nonce seed, dismissal persistence, skeleton cards, engine badge, and
 // the welcome hero. Clicking a card populates the input without
 // auto-submitting. Failures show fallback cards, never a blank grid.
-export const SuggestedDirectivesGrid: React.FC<SuggestedDirectivesGridProps> = ({
+// Memoized: it renders under the textarea owner, so every keystroke
+// re-renders the parent — without this, each keystroke reconciles the hero
+// + directive cards (the span/button renders in the INP trace).
+export const SuggestedDirectivesGrid: React.FC<SuggestedDirectivesGridProps> = React.memo(function SuggestedDirectivesGrid({
   repo,
   snapshot,
   messagesLength,
   isBusy,
   onUsePrompt,
-}) => {
+}) {
   const [directives, setDirectives] = useState<SuggestedDirective[]>([]);
   const [directiveStatus, setDirectiveStatus] = useState<DirectiveGenerationStatus>('idle');
   const [directiveEngine, setDirectiveEngine] = useState<string>('');
@@ -199,4 +202,4 @@ export const SuggestedDirectivesGrid: React.FC<SuggestedDirectivesGridProps> = (
       </div>
     </div>
   );
-};
+});

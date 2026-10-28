@@ -82,7 +82,14 @@ const MemoMarkdown = React.memo(function MemoMarkdown({ content }: { content: st
 // (outside Markdown so dataUrls are never parsed), minimized/corrupted
 // states, and follow-up refactor cards. Per-keystroke Markdown cost stays
 // contained by MemoMarkdown above.
-export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
+// Memoized: the parent holds the textarea value, so every keystroke
+// re-renders the parent — without this, each keystroke would reconcile
+// every bubble and re-run the refactor regex over every (large) compiled
+// prompt, which is the textarea input-delay half of the INP trace. Props
+// stay referentially stable across keystrokes (messages/snapshot arrays
+// keep identity until the conversation actually changes), so the default
+// shallow compare skips correctly with no custom comparator.
+export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(function ChatMessageItem({
   msg,
   messages,
   copiedId,
@@ -95,7 +102,22 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   onCopy,
   onRetryPrompt,
   onUsePrompt,
-}) => {
+}) {
+  // Refactor extraction runs regexes over the full compiled prompt: memoize
+  // on content identity so idle keystrokes never re-parse old bubbles.
+  const followUpRefactors = React.useMemo(() => {
+    const extracted = extractSuggestedRefactors(msg.content);
+    if (msg.suggestedRefactors && msg.suggestedRefactors.length > 0) {
+      return msg.suggestedRefactors;
+    }
+    if (msg.snapshotMeta?.suggestedRefactors && msg.snapshotMeta.suggestedRefactors.length > 0) {
+      return msg.snapshotMeta.suggestedRefactors;
+    }
+    if (extracted.refactors && extracted.refactors.length > 0) {
+      return extracted.refactors;
+    }
+    return null;
+  }, [msg.content, msg.suggestedRefactors, msg.snapshotMeta?.suggestedRefactors]);
   return (
     <div
       className={`flex gap-3 max-w-4xl mx-auto ${
@@ -342,43 +364,27 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
           <div className="prose prose-invert prose-xs max-w-none text-slate-300 leading-relaxed">
             <MemoMarkdown content={msg.content} />
 
-            {(() => {
-              const extracted = extractSuggestedRefactors(msg.content);
-              const realRefactors =
-                msg.suggestedRefactors && msg.suggestedRefactors.length > 0
-                  ? msg.suggestedRefactors
-                  : msg.snapshotMeta?.suggestedRefactors && msg.snapshotMeta.suggestedRefactors.length > 0
-                  ? msg.snapshotMeta.suggestedRefactors
-                  : extracted.refactors && extracted.refactors.length > 0
-                  ? extracted.refactors
-                  : null;
-
-              if (!realRefactors || realRefactors.length === 0) {
-                return null;
-              }
-
-              return (
-                <div className="mt-6 pt-4 border-t border-white/[0.06] space-y-2.5 animate-in fade-in duration-300">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Suggested Follow-up Refactors</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {realRefactors.map((promptText, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => onUsePrompt(promptText)}
-                        className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-white/[0.06] hover:border-indigo-500/40 text-left text-xs text-slate-300 hover:text-white transition flex items-start gap-2.5 group cursor-pointer shadow-sm active:scale-[0.99]"
-                      >
-                        <span className="font-mono text-slate-500 text-[11px] mt-0.5">0{idx + 1}.</span>
-                        <span className="line-clamp-2 leading-relaxed">{promptText}</span>
-                      </button>
-                    ))}
-                  </div>
+            {followUpRefactors && followUpRefactors.length > 0 && (
+              <div className="mt-6 pt-4 border-t border-white/[0.06] space-y-2.5 animate-in fade-in duration-300">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Suggested Follow-up Refactors</span>
                 </div>
-              );
-            })()}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {followUpRefactors.map((promptText, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => onUsePrompt(promptText)}
+                      className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-white/[0.06] hover:border-indigo-500/40 text-left text-xs text-slate-300 hover:text-white transition flex items-start gap-2.5 group cursor-pointer shadow-sm active:scale-[0.99]"
+                    >
+                      <span className="font-mono text-slate-500 text-[11px] mt-0.5">0{idx + 1}.</span>
+                      <span className="line-clamp-2 leading-relaxed">{promptText}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -390,4 +396,4 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
       )}
     </div>
   );
-};
+});

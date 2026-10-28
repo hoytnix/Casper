@@ -11,7 +11,11 @@ interface RepoCardProps {
   onDelete: (repoId: string) => void;
 }
 
-export const RepoCard: React.FC<RepoCardProps> = ({ repo, onOpen, onDelete }) => {
+// Memoized: the grid holds the search input, so every search keystroke
+// re-renders the grid — without this, each keystroke reconciles every card
+// (the svg.trash render in the INP trace). Card props keep identity until
+// the repo list actually changes, so the default shallow compare skips.
+export const RepoCard: React.FC<RepoCardProps> = React.memo(function RepoCard({ repo, onOpen, onDelete }) {
   const formatTime = (ts: number | null) => {
     if (!ts) return 'Never compiled';
     return new Date(ts).toLocaleDateString([], {
@@ -109,4 +113,4 @@ export const RepoCard: React.FC<RepoCardProps> = ({ repo, onOpen, onDelete }) =>
       </div>
     </div>
   );
-};
+});

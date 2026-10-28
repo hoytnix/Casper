@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { ImageAttachment } from '@/types';
 import {
   MAX_IMAGES_PER_MESSAGE,
@@ -73,11 +73,13 @@ export function useChatAttachments() {
     void ingestImageFiles(files);
   };
 
-  const handleRemoveImage = (id: string) => {
+  // Stable identity: the memoized attachment preview strip depends on it,
+  // so it must not change per keystroke. Functional setState + ref only.
+  const handleRemoveImage = useCallback((id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
     setImageError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  }, []);
 
   const resetAttachments = () => {
     setAttachments([]);

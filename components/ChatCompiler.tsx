@@ -28,6 +28,44 @@ interface ChatCompilerProps {
 }
 
 
+// Attachment preview strip: memoized so textarea keystrokes skip it.
+// Without this, every keystroke reconciles <img src={dataUrl}> tags whose
+// multi-MB base64 strings are compared by value during the diff — pure
+// input-delay cost. `attachments` keeps array identity until ingest/remove,
+// so the default shallow compare skips correctly.
+const AttachmentStrip: React.FC<{
+  attachments: ImageAttachment[];
+  onRemoveImage: (id: string) => void;
+}> = React.memo(function AttachmentStrip({ attachments, onRemoveImage }) {
+  if (attachments.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2 px-2.5 pt-1 pb-2.5">
+      {attachments.map((att) => (
+        <div
+          key={att.id}
+          className="relative w-[72px] rounded-lg overflow-hidden border border-white/10 bg-slate-900"
+        >
+          <img src={att.dataUrl} alt={att.name} className="w-[72px] h-[72px] object-cover" />
+          <button
+            type="button"
+            onClick={() => onRemoveImage(att.id)}
+            className="absolute top-0.5 right-0.5 p-0.5 rounded-md bg-slate-950/80 text-slate-300 hover:text-white hover:bg-slate-700 transition"
+            title={`Remove ${att.name}`}
+          >
+            <X className="w-3 h-3" />
+          </button>
+          <div className="px-1 py-0.5 text-[9px] font-mono text-slate-400 truncate" title={att.name}>
+            {att.name}
+          </div>
+          <div className="px-1 pb-1 text-[9px] font-mono text-slate-500">
+            {Math.max(1, Math.round(att.sizeBytes / 1024))} KB
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+});
+
 export const ChatCompiler: React.FC<ChatCompilerProps> = ({
   repo,
   messages,
@@ -110,9 +148,26 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
     progress.step !== 'completed' &&
     progress.step !== 'error';
 
+  // Pin-to-bottom scroll, coalesced to one layout per frame: the old
+  // effect ran `smooth` scrollIntoView on every `progress` object identity
+  // change (routing callbacks + every stream chunk), forcing a sync layout
+  // per chunk that overlapped typing and mid-stream clicks in INP traces.
+  // rAF coalescing makes rapid chunks share one trailing scroll, and
+  // depending on `progress.step` (not the whole object) skips percent-tick
+  // renders entirely.
+  const scrollQueuedRef = useRef(false);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, progress]);
+    if (scrollQueuedRef.current) return;
+    scrollQueuedRef.current = true;
+    const raf = requestAnimationFrame(() => {
+      scrollQueuedRef.current = false;
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      scrollQueuedRef.current = false;
+    };
+  }, [messages, progress.step]);
 
   // Synchronous submit lock: `isBusy` arrives via parent re-render
   // (async), so rapid double-click / double-Enter would otherwise fire
@@ -148,6 +203,32 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
   }, []);
 
 
+  // Memoized conversation list: building the element descriptors is cheap,
+  // but skipping it keeps keystroke renders to the input deck only. Deps are
+  // all stable across keystrokes (messages array identity only changes when
+  // the conversation actually changes; callbacks are useCallbacks/setState).
+  const messageList = React.useMemo(
+    () =>
+      messages.map((msg) => (
+        <ChatMessageItem
+          key={msg.id}
+          msg={msg}
+          messages={messages}
+          copiedId={copiedId}
+          isMinimized={isMsgMinimized(msg)}
+          thinkingExpanded={expandedThinking.has(msg.id)}
+          trailExpanded={expandedTrails.has(msg.id)}
+          onToggleMinimize={toggleMinimize}
+          onToggleThinking={toggleThinking}
+          onToggleTrail={toggleTrail}
+          onCopy={handleCopy}
+          onRetryPrompt={onRetryPrompt}
+          onUsePrompt={setInputText}
+        />
+      )),
+    [messages, copiedId, isMsgMinimized, expandedThinking, expandedTrails, toggleMinimize, toggleThinking, toggleTrail, handleCopy, onRetryPrompt]
+  );
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#07090e]/60 overflow-hidden">
       {/* Messages Scroll Area */}
@@ -162,24 +243,8 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
           />
         )}
 
-        {/* Render Conversation */}
-        {messages.map((msg) => (
-          <ChatMessageItem
-            key={msg.id}
-            msg={msg}
-            messages={messages}
-            copiedId={copiedId}
-            isMinimized={isMsgMinimized(msg)}
-            thinkingExpanded={expandedThinking.has(msg.id)}
-            trailExpanded={expandedTrails.has(msg.id)}
-            onToggleMinimize={toggleMinimize}
-            onToggleThinking={toggleThinking}
-            onToggleTrail={toggleTrail}
-            onCopy={handleCopy}
-            onRetryPrompt={onRetryPrompt}
-            onUsePrompt={setInputText}
-          />
-        ))}
+        {/* Render Conversation (memoized: skipped on keystrokes) */}
+        {messageList}
 
         {/* Step Loader during ingestion / compilation */}
         <div className="max-w-4xl mx-auto">
@@ -224,33 +289,8 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                 <span className="text-xs font-semibold text-indigo-200">Drop screenshots to attach</span>
               </div>
             )}
-            {/* Attachment preview strip */}
-            {attachments.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-2.5 pt-1 pb-2.5">
-                {attachments.map((att) => (
-                  <div
-                    key={att.id}
-                    className="relative w-[72px] rounded-lg overflow-hidden border border-white/10 bg-slate-900"
-                  >
-                    <img src={att.dataUrl} alt={att.name} className="w-[72px] h-[72px] object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveImage(att.id)}
-                      className="absolute top-0.5 right-0.5 p-0.5 rounded-md bg-slate-950/80 text-slate-300 hover:text-white hover:bg-slate-700 transition"
-                      title={`Remove ${att.name}`}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                    <div className="px-1 py-0.5 text-[9px] font-mono text-slate-400 truncate" title={att.name}>
-                      {att.name}
-                    </div>
-                    <div className="px-1 pb-1 text-[9px] font-mono text-slate-500">
-                      {Math.max(1, Math.round(att.sizeBytes / 1024))} KB
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Attachment preview strip (memoized: skipped on keystrokes) */}
+            <AttachmentStrip attachments={attachments} onRemoveImage={handleRemoveImage} />
             {imageError && (
               <div className="mx-2.5 mb-2 px-2.5 py-1.5 rounded-lg bg-rose-950/30 border border-rose-500/30 text-[11px] text-rose-300">
                 {imageError}

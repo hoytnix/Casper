@@ -17,12 +17,16 @@ export interface FinanceTrendChartProps {
 // FinanceWorkspace. Pure derivation display over the cost summary; the
 // date-range buttons drive the parent's filter state. The model breakdown
 // panel arrives as children so the original analytics grid DOM is intact.
-export const FinanceTrendChart: React.FC<FinanceTrendChartProps> = ({
+// Memoized: the parent holds the ledger search input, so every search
+// keystroke re-renders the parent — without this, each keystroke
+// reconciles all KPI cards + the chart. Props keep identity until records
+// or the date range actually change.
+export const FinanceTrendChart: React.FC<FinanceTrendChartProps> = React.memo(function FinanceTrendChart({
   summary,
   dateRange,
   onDateRangeChange,
   children,
-}) => {
+}) {
   return (
     <>
       {/* Summary KPI Cards Grid */}
@@ -182,4 +186,4 @@ export const FinanceTrendChart: React.FC<FinanceTrendChartProps> = ({
       </div>
     </>
   );
-};
+});

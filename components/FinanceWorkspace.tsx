@@ -45,6 +45,9 @@ export const FinanceWorkspace: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('all');
   const [dateRange, setDateRange] = useState<'all' | '7d' | '30d' | '90d' | 'year'>('all');
+  // Deferred query keeps the ledger search input responsive (low INP) while
+  // the table re-filters; the input itself stays controlled on `searchQuery`.
+  const deferredSearchQuery = React.useDeferredValue(searchQuery);
 
   // Modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -85,7 +88,9 @@ export const FinanceWorkspace: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const handleDeleteRecord = async (id: string) => {
+  // Stable callbacks: the memoized ledger table depends on them, so they
+  // must not change per search keystroke.
+  const handleDeleteRecord = React.useCallback(async (id: string) => {
     if (!confirm('Are you sure you want to delete this token cost record?')) return;
     setDeletingId(id);
     try {
@@ -100,9 +105,9 @@ export const FinanceWorkspace: React.FC = () => {
     } finally {
       setDeletingId(null);
     }
-  };
+  }, [tokenRecords]);
 
-  const handleClearAll = () => {
+  const handleClearAll = React.useCallback(() => {
     if (!confirm('Are you sure you want to clear all token records?')) return;
     setTokenRecords([]);
     try {
@@ -110,15 +115,31 @@ export const FinanceWorkspace: React.FC = () => {
     } catch {
       // fallback
     }
-  };
+  }, []);
 
-  const filteredRecords = filterTokenRecords(tokenRecords, {
-    query: searchQuery,
-    modelName: selectedModel,
-    dateRange,
-  });
+  // Memoized derivations: without this, every search keystroke re-filters
+  // AND rebuilds new array identities, busting the memoized table below.
+  const filteredRecords = React.useMemo(
+    () =>
+      filterTokenRecords(tokenRecords, {
+        query: deferredSearchQuery,
+        modelName: selectedModel,
+        dateRange,
+      }),
+    [tokenRecords, deferredSearchQuery, selectedModel, dateRange]
+  );
 
-  const uniqueModels = Array.from(new Set(tokenRecords.map((r) => r.modelName))).filter(Boolean);
+  const uniqueModels = React.useMemo(
+    () => Array.from(new Set(tokenRecords.map((r) => r.modelName))).filter(Boolean),
+    [tokenRecords]
+  );
+
+  // Memoized children element: without this, the chart's `children` prop is
+  // a new element every parent render, busting its memo on each keystroke.
+  const modelBreakdown = React.useMemo(
+    () => <FinanceModelBreakdown summary={summary} />,
+    [summary]
+  );
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -153,7 +174,7 @@ export const FinanceWorkspace: React.FC = () => {
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
       >
-        <FinanceModelBreakdown summary={summary} />
+        {modelBreakdown}
       </FinanceTrendChart>
 
       <FinanceLedgerTable
