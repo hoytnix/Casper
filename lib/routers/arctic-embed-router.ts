@@ -12,6 +12,19 @@ let embeddingPipeline: any = null;
 let isPipelineLoading = false;
 let pipelineLoadError: string | null = null;
 let cachedFileEmbeddings: { path: string; vector: Float32Array; skeleton: string }[] = [];
+let cachedEmbeddingsKey = '';
+
+// Fingerprint of the embedded file set: same key means the cached vectors
+// are still valid, so repeat warmups (e.g. after every snapshot save)
+// skip the whole loop instead of re-embedding for tens of seconds.
+function embeddingsKeyFor(files: SourceFile[]): string {
+  let hash = 0;
+  const body = files.map((f) => `${f.path}:${f.content?.length ?? f.size ?? 0}`).join('|');
+  for (let i = 0; i < body.length; i++) {
+    hash = (hash * 31 + body.charCodeAt(i)) | 0;
+  }
+  return `${files.length}:${body.length}:${hash}`;
+}
 
 export function getEmbeddingPipeline(): any {
   return embeddingPipeline;
@@ -67,6 +80,13 @@ export async function ensureArcticPipeline(
     }
 
     if (embeddingPipeline && files.length > 0) {
+      // Same file set as the cached vectors: skip the loop entirely.
+      // Repeat warmups used to re-embed every file back-to-back on the
+      // main thread, starving paint and inputs for tens of seconds.
+      const key = embeddingsKeyFor(files);
+      if (cachedFileEmbeddings.length > 0 && cachedEmbeddingsKey === key) {
+        return true;
+      }
       cachedFileEmbeddings = [];
       let idx = 0;
       for (const card of repoIndex) {
@@ -81,7 +101,13 @@ export async function ensureArcticPipeline(
         const vector = new Float32Array(output.data);
         cachedFileEmbeddings.push({ path: card.path, vector, skeleton: card.skeletonLine });
         idx++;
+        // Yield one macrotask every few files so paint and input stay
+        // responsive during the (unavoidably main-thread) embedding run.
+        if (idx % 5 === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
       }
+      cachedEmbeddingsKey = key;
       return true;
     }
     return true;
@@ -89,6 +115,7 @@ export async function ensureArcticPipeline(
     console.warn('Arctic embed pipeline failed to load:', err);
     pipelineLoadError = err instanceof Error ? err.message : String(err);
     isPipelineLoading = false;
+    cachedEmbeddingsKey = '';
     return false;
   }
 }

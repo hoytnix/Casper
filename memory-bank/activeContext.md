@@ -1,6 +1,12 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Header-attributed INP block (8.2s on `header.sticky`) traced to warmup churn, not header handlers:
+- **Measured first** (`/tmp/inp-probe.mjs`, since removed): graph build 34ms @500 files, sanitize/Zod 19ms, Markdown first-parse ~30–100ms/bubble — all too small to explain 8s. The header's own handlers are trivial (navigation, modal open).
+- **Root cause**: `ensureArcticPipeline` re-embedded every file back-to-back with zero yields on every warmup, and the workspace mount effect re-ran warmup on every snapshot save — tens of seconds of main-thread saturation. Any header click inside that window inherits the block.
+- **Fix (`/lib/routers/arctic-embed-router.ts`)**: fingerprint-keyed skip when the file set is unchanged (key set only after a completed loop, cleared on failure) + one-macrotask yield every 5 files.
+- **Fix (`/lib/routers/gemini-nano-router.ts`)**: reuse the live Nano session when the repo + exact system prompt are unchanged instead of recreating per warmup.
+- Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green. Field re-measurement still needs a real browser run; first-ever warmup per fileset remains heavy but interruptible.
 Strategic Refactoring roadmap COMPLETE — all 7 units done, gates green each unit, no runtime contract change:
 - Unit 7 (`components/ContextInspector.tsx` 477 → 211 lines): **new `/components/InspectorFileList.tsx` (185)** (file search + sized list + `InspectorExcludes` always-visible section), **`/components/InspectorCodeGraph.tsx` (96)** (symbol search + cards; symbols computed once in shell), **`/components/InspectorUnixTrace.tsx` (72)** (collapsible trace log, null when empty). Shell keeps header, tabs, cost metrics bar, composition. Fixed a JSX comment-placement parse error in the moved list.
 - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green.

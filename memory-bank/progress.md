@@ -196,3 +196,7 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - No runtime contract change (tab counts, cost panel, excludes, trace shapes intact).
   - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green.
 - [x] **Strategic Refactor COMPLETE (Units 1–7)**: route 1091→373, workspace 1291→511, compiler 877→336, router 960→463, store 598→358, finance 519→191, inspector 477→211. Pending: live compile + cancel manual check (SSE shapes preserved by verbatim moves, not yet exercised live).
+- [x] **Header INP Fix (8.2s block on `header.sticky`)**:
+  - Probed mount costs in node: graph 34ms, sanitize 19ms, Markdown ~30–100ms/bubble — header handlers trivial; root cause was Arctic re-embed churn + Nano session recreation on every warmup.
+  - Fingerprint-keyed embed skip + macrotask yield every 5 files (`/lib/routers/arctic-embed-router.ts`); session reuse on unchanged prompt (`/lib/routers/gemini-nano-router.ts`).
+  - Verified: 105/105 `node:test`, `tsc` clean, `eslint` 0 errors, `pnpm build` green. Field INP re-measurement needs a real browser run.

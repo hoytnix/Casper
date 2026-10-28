@@ -34,6 +34,18 @@ declare global {
 
 let cachedBaseSession: any = null;
 let cachedRepoKey: string = '';
+let cachedSessionPromptKey = '';
+
+// The system prompt embeds the graph summary, so the reuse key covers
+// both the repo and the exact prompt content: a repeat warmup with an
+// unchanged snapshot reuses the session instead of recreating it.
+function sessionPromptKey(repoIdentifier: string, systemPrompt: string): string {
+  let hash = 0;
+  for (let i = 0; i < systemPrompt.length; i++) {
+    hash = (hash * 31 + systemPrompt.charCodeAt(i)) | 0;
+  }
+  return `${repoIdentifier}|${systemPrompt.length}:${hash}`;
+}
 
 export function getNanoSession(): any {
   return cachedBaseSession;
@@ -98,11 +110,20 @@ ${graphSummary.slice(0, 3500)}
 
 ${routerScopeNote}`;
 
+      // Unchanged snapshot: the live session already carries this exact
+      // system prompt — recreating it per warmup wastes seconds and churns
+      // the model. Only create when the key differs.
+      const promptKey = sessionPromptKey(repoIdentifier, systemPrompt);
+      if (cachedBaseSession && cachedSessionPromptKey === promptKey) {
+        cachedRepoKey = repoIdentifier;
+        return true;
+      }
       cachedBaseSession = await lm.create({
         initialPrompts: [{ role: 'system', content: systemPrompt }],
         outputLanguage: 'en',
       });
       cachedRepoKey = repoIdentifier;
+      cachedSessionPromptKey = promptKey;
       return true;
     }
     return false;
