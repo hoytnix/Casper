@@ -15,6 +15,12 @@ import {
   normalizeThinkingLevel,
   normalizeThinkingSummaries,
 } from '@/lib/thinking-levels';
+import {
+  buildMuseRequestBody,
+  createMuseStreamParser,
+  flushMuseStreamParser,
+  pushMuseSseText,
+} from '@/lib/muse-stream';
 
 const NEXTJS_EXPERT_SYSTEM_INSTRUCTION = `You are Casper, the friendly ghost who reads all your code — a Principal Architect and Autonomous Prompt Compiler specializing exclusively in Next.js 15+ App Router, React Server Components (RSC), Server Actions, Route Handlers, and modern TypeScript architecture.
 You have been given a Next.js repository structure and the developer's requested improvements.
@@ -173,21 +179,20 @@ async function* streamMuseCompletionChunks(args: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${args.apiKey}`,
       },
-      body: JSON.stringify({
-        model: args.model,
-        stream: true,
-        temperature: args.temperature,
-        // Muse Spark carries the full five-level scale (xhigh/max included).
-        ...buildMuseThinkingPayload(
-          normalizeThinkingLevel(args.thinkingLevel),
-          normalizeThinkingSummaries(args.thinkingSummaries)
-        ),
-        messages: [
-          { role: 'system', content: args.systemInstruction },
-          ...(Array.isArray(args.historyMessages) ? args.historyMessages : []),
-          { role: 'user', content: args.prompt },
-        ],
-      }),
+      body: JSON.stringify(
+        buildMuseRequestBody({
+          model: args.model,
+          systemInstruction: args.systemInstruction,
+          prompt: args.prompt,
+          historyMessages: args.historyMessages,
+          temperature: args.temperature,
+          // Muse Spark carries the full five-level scale (xhigh/max included).
+          thinkingPayload: buildMuseThinkingPayload(
+            normalizeThinkingLevel(args.thinkingLevel),
+            normalizeThinkingSummaries(args.thinkingSummaries)
+          ),
+        })
+      ),
       signal: controller.signal,
     });
     if (!res.ok || !res.body) {
@@ -196,31 +201,18 @@ async function* streamMuseCompletionChunks(args: {
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let buf = '';
+    const parser = createMuseStreamParser();
+    const emit = (text: string) => ({ candidates: [{ content: { parts: [{ text }] } }] });
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const frames = buf.split('\n\n');
-      buf = frames.pop() || '';
-      for (const frame of frames) {
-        for (const line of frame.split('\n')) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const payload = trimmed.slice(5).trim();
-          if (payload === '[DONE]') return;
-          try {
-            const json = JSON.parse(payload);
-            const delta: unknown =
-              json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.message?.content ?? '';
-            if (typeof delta === 'string' && delta.length > 0) {
-              yield { candidates: [{ content: { parts: [{ text: delta }] } }] };
-            }
-          } catch {
-            // Partial JSON frame mid-stream — ignore and keep buffering.
-          }
-        }
+      for (const text of pushMuseSseText(parser, decoder.decode(value, { stream: true }))) {
+        yield emit(text);
       }
+      if (parser.finished) return;
+    }
+    for (const text of flushMuseStreamParser(parser)) {
+      yield emit(text);
     }
   } finally {
     clearTimeout(timer);

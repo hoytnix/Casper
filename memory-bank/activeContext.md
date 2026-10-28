@@ -1,6 +1,11 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Fixed Muse single-token truncation bug (`/lib/muse-stream.ts` new, `/app/api/compile/route.ts` rewired):
+- **Root causes**: (1) Muse request never sent `max_tokens`, so a provider-side degenerate default could end the completion after one token; (2) SSE parser silently dropped chunks — CRLF framing never split, trailing buffer at EOF discarded, content-block arrays skipped, non-SSE single-JSON bodies yielded nothing.
+- **Fix**: extracted pure parser + request builder into `lib/muse-stream.ts` (zero value imports, edge-safe); pinned `MUSE_MAX_OUTPUT_TOKENS = 16384` in the request body; CRLF-aware splitting, EOF flush with raw-JSON fallback, array-block text extraction. Route's `streamMuseCompletionChunks` is now a thin fetch + reader loop over the helpers.
+- **Regression**: `lib/muse-stream.test.ts` 9/9 (observed 5 authentic failures against verbatim-extracted logic before the fix: CRLF, trailing flush, array blocks, single-JSON, max_tokens).
+- Verified: 51/51 `node:test` pass, `tsc --noEmit` clean, `eslint` clean on touched files, `pnpm build` green.
 Implemented Muse Spark MAX debilitation protocols across Prompt/Ideas/BTW modes (`/app/api/compile/route.ts` only):
 - **Prompt mode (Next.js + Hono)**: `PROMPT DEBILITATION & ELEVATION PROTOCOL` — interrogates vague prompts against the investigated snapshot, enforces dependency-first ordering (types → validators → actions/middleware → handlers/UI), injects edge invariants, demands exact @[/path] citations, requires dead-code purge.
 - **Ideas mode (Next.js + Hono)**: hostile Venture Technologist rewrite — 77 candidates stress-tested via RICE + VRIN-EO, high-effort/low-engine-optimization concepts killed in screening, top 7 survivors with breakdown tables + exact @[/path] targets.

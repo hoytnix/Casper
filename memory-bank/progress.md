@@ -51,7 +51,14 @@
   - Verified: `eslint` clean, `next build` green (typecheck included), zero lingering `Next.js Expert` / `NextExpert` / `Hono Expert` references in app code
 
 ## Current Status
-Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, Muse Spark cascade integration, Muse-exclusive thinking effort levels (`xhigh`/`max`), MAX debilitation protocols across Prompt/Ideas/BTW, and fully synchronized Memory Bank.
+Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alongside permalinks, clean header, screen-height responsive layout, automated prompt expense logging, Muse Spark cascade integration, Muse-exclusive thinking effort levels (`xhigh`/`max`), MAX debilitation protocols across Prompt/Ideas/BTW, Muse single-token truncation fix, and fully synchronized Memory Bank.
+
+## Completed Modules (cont.)
+- [x] **Muse Single-Token Truncation Fix**:
+  - New pure transport module `lib/muse-stream.ts` (parser + request builder, zero value imports); route rewired to it with no behavior change to the happy path
+  - Pinned `max_tokens: 16384` in every Muse request; CRLF-aware SSE splitting, EOF trailing-event flush, non-SSE single-JSON fallback, content-block array extraction
+  - Committed regression suite `lib/muse-stream.test.ts` 9/9 (5 failures observed pre-fix against verbatim logic)
+  - Verified: 51/51 `node:test`, `tsc` clean, `eslint` clean, `pnpm build` green
 
 ## Completed Modules (cont.)
 - [x] **Muse Spark MAX Debilitation Protocols (Prompt / Ideas / BTW)**:
