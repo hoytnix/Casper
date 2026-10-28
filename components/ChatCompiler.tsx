@@ -18,19 +18,26 @@ import {
   RefreshCw,
   Loader2,
   X,
+  ImagePlus,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
-import { ChatMessage, IngestionProgress, IngestionSnapshot, Repo, SuggestedDirective, DirectiveGenerationStatus } from '@/types';
+import { ChatMessage, ImageAttachment, IngestionProgress, IngestionSnapshot, Repo, SuggestedDirective, DirectiveGenerationStatus } from '@/types';
 import { StepLoader } from './StepLoader';
 import { formatCompiledPrompt, extractSuggestedRefactors } from '@/lib/utils';
 import { generateSuggestedDirectives } from '@/lib/local-context-router';
+import {
+  MAX_IMAGES_PER_MESSAGE,
+  chatImagesSchema,
+  clipboardItemsToFiles,
+  fileToImageAttachment,
+} from '@/lib/image-attachments';
 import { loadCachedDirectives, saveCachedDirectives, loadDismissedPrompts, saveDismissedPrompt } from '@/hooks/useRepoStore';
 
 interface ChatCompilerProps {
   repo: Repo;
   messages: ChatMessage[];
   progress: IngestionProgress;
-  onSendMessage: (promptText: string) => void;
+  onSendMessage: (promptText: string, images?: ImageAttachment[]) => void;
   onClearChat: () => void;
   onDeleteMessage?: (id: string) => void;
   onRetryPrompt?: (promptText: string) => void;
@@ -57,6 +64,10 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
   const [directives, setDirectives] = useState<SuggestedDirective[]>([]);
   const [directiveStatus, setDirectiveStatus] = useState<DirectiveGenerationStatus>('idle');
   const [directiveEngine, setDirectiveEngine] = useState<string>('');
+  const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const directiveReqId = useRef(0);
 
@@ -119,9 +130,57 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || isBusy) return;
-    onSendMessage(inputText.trim());
+    if (isBusy) return;
+    if (!inputText.trim() && attachments.length === 0) return;
+    onSendMessage(inputText.trim(), attachments.length > 0 ? attachments : undefined);
     setInputText('');
+    setAttachments([]);
+    setImageError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const ingestImageFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    setImageError(null);
+    const room = MAX_IMAGES_PER_MESSAGE - attachments.length;
+    if (room <= 0) {
+      setImageError(`Limit ${MAX_IMAGES_PER_MESSAGE} images per message — remove one first.`);
+      return;
+    }
+    const accepted = files.slice(0, room);
+    if (files.length > room) {
+      setImageError(`Only ${room} more image${room === 1 ? '' : 's'} fit (limit ${MAX_IMAGES_PER_MESSAGE} at 5MB each).`);
+    }
+    for (const file of accepted) {
+      try {
+        const attachment = await fileToImageAttachment(file);
+        setAttachments((prev) => {
+          if (prev.length >= MAX_IMAGES_PER_MESSAGE) return prev;
+          const checked = chatImagesSchema.safeParse([...prev, attachment]);
+          if (!checked.success) {
+            setImageError('Image rejected: exceeds size limits (5MB each, 7MB total).');
+            return prev;
+          }
+          return [...prev, attachment];
+        });
+      } catch (err) {
+        setImageError(err instanceof Error ? err.message : `Could not attach ${file.name}.`);
+      }
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const files = clipboardItemsToFiles(e.clipboardData?.items);
+    if (files.length === 0) return;
+    // Image payload present: keep it out of the text, into attachments.
+    e.preventDefault();
+    void ingestImageFiles(files);
+  };
+
+  const handleRemoveImage = (id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+    setImageError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleCopy = async (id: string, text: string) => {
@@ -493,10 +552,36 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
                   </div>
                 )}
 
+              {/* Attached images render above text, outside Markdown so dataUrls are never parsed */}
+              {msg.images && msg.images.length > 0 && !isMsgMinimized(msg) && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {msg.images.map((img) => (
+                    <button
+                      key={img.id}
+                      type="button"
+                      onClick={() => window.open(img.dataUrl, '_blank', 'noopener')}
+                      title={`${img.name} — open full size`}
+                      className="relative group/img cursor-zoom-in"
+                    >
+                      <img
+                        src={img.dataUrl}
+                        alt={img.name}
+                        className="w-20 h-20 rounded-lg object-cover border border-white/10 group-hover/img:border-indigo-500/50 transition"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Message Content */}
               {isMsgMinimized(msg) ? (
                 <div className="text-xs font-mono text-slate-500 italic py-1">
                   Message minimized (spoiled) &middot; Click expand to view content.
+                  {msg.images && msg.images.length > 0 && (
+                    <span className="ml-2 not-italic px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/[0.06]">
+                      {msg.images.length} image{msg.images.length === 1 ? '' : 's'} attached
+                    </span>
+                  )}
                 </div>
               ) : isHtmlCorrupted(msg.content) ? (
                 <div className="space-y-3 p-4 rounded-xl bg-rose-950/20 border border-rose-500/30 text-rose-200 text-xs">
@@ -602,19 +687,84 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
 
       {/* Input Command Deck Bar */}
       <div className="p-4 sm:p-5 border-t border-white/[0.08] bg-[#07090e]/90 backdrop-blur-xl">
-        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-2">
-          <div className="relative rounded-2xl glass-panel border border-white/[0.08] focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all p-2.5">
+        <form
+          onSubmit={handleSubmit}
+          onDragOver={(e) => {
+            if (isBusy) return;
+            e.preventDefault();
+            setDragActive(true);
+          }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragActive(false);
+            if (isBusy) return;
+            const files = clipboardItemsToFiles(e.dataTransfer?.items);
+            void ingestImageFiles(files);
+          }}
+          className="max-w-4xl mx-auto space-y-2"
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files || []);
+              void ingestImageFiles(files);
+            }}
+          />
+          <div className={`relative rounded-2xl glass-panel border transition-all p-2.5 ${dragActive ? 'border-indigo-400 ring-1 ring-indigo-500' : 'border-white/[0.08] focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500'}`}>
+            {dragActive && (
+              <div className="absolute inset-0 z-10 rounded-2xl bg-indigo-950/60 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+                <span className="text-xs font-semibold text-indigo-200">Drop screenshots to attach</span>
+              </div>
+            )}
+            {/* Attachment preview strip */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-2.5 pt-1 pb-2.5">
+                {attachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className="relative w-[72px] rounded-lg overflow-hidden border border-white/10 bg-slate-900"
+                  >
+                    <img src={att.dataUrl} alt={att.name} className="w-[72px] h-[72px] object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(att.id)}
+                      className="absolute top-0.5 right-0.5 p-0.5 rounded-md bg-slate-950/80 text-slate-300 hover:text-white hover:bg-slate-700 transition"
+                      title={`Remove ${att.name}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                    <div className="px-1 py-0.5 text-[9px] font-mono text-slate-400 truncate" title={att.name}>
+                      {att.name}
+                    </div>
+                    <div className="px-1 pb-1 text-[9px] font-mono text-slate-500">
+                      {Math.max(1, Math.round(att.sizeBytes / 1024))} KB
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {imageError && (
+              <div className="mx-2.5 mb-2 px-2.5 py-1.5 rounded-lg bg-rose-950/30 border border-rose-500/30 text-[11px] text-rose-300">
+                {imageError}
+              </div>
+            )}
             <textarea
               rows={3}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
+              onPaste={handlePaste}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
                   handleSubmit(e);
                 }
               }}
-              placeholder={`Describe the improvements or features for ${repo.owner}/${repo.repo}... (Cmd+Enter to compile)`}
+              placeholder={`Describe the improvements or features for ${repo.owner}/${repo.repo}... (Cmd+Enter to compile, Ctrl+V to paste screenshots)`}
               disabled={isBusy}
               className="w-full bg-transparent px-2.5 py-1 text-xs sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none resize-none"
             />
@@ -633,6 +783,15 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isBusy}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition disabled:opacity-40"
+                  title="Attach screenshots (PNG, JPEG, WebP, GIF — max 4, 5MB each)"
+                >
+                  <ImagePlus className="w-3.5 h-3.5" />
+                </button>
                 {messages.length > 0 && (
                   <button
                     type="button"
@@ -646,7 +805,7 @@ export const ChatCompiler: React.FC<ChatCompilerProps> = ({
 
                 <button
                   type="submit"
-                  disabled={isBusy || !inputText.trim()}
+                  disabled={isBusy || (!inputText.trim() && attachments.length === 0)}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold text-xs shadow-sm hover:shadow-indigo-500/20 transition active:scale-95"
                 >
                   <Send className="w-3.5 h-3.5" />

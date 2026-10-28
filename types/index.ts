@@ -109,6 +109,8 @@ export interface IngestionSnapshot {
   modelPricing?: ModelPricingTier;
   ideas?: IdeaItem[];
   btwAnswer?: BtwAnswer;
+  imageCount?: number;
+  imageBytes?: number;
 }
 
 export interface RouterToolTrace {
@@ -139,6 +141,19 @@ export interface RoutingResult {
   toolTraces?: RouterToolTrace[];
 }
 
+export type ImageMime = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+
+export interface ImageAttachment {
+  id: string;
+  name: string;
+  mimeType: ImageMime;
+  sizeBytes: number;
+  width?: number;
+  height?: number;
+  dataUrl: string;
+  createdAt: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -149,6 +164,8 @@ export interface ChatMessage {
   thinkingLevel?: ThinkingLevel;
   costDetails?: ModelCostDetails;
   suggestedRefactors?: string[];
+  images?: ImageAttachment[];
+  imageTokensCount?: number;
   snapshotMeta?: {
     filesCount: number;
     tokensCount: number; // Represents Input Context Tokens
@@ -173,6 +190,8 @@ export interface ChatMessage {
     ideas?: IdeaItem[];
     btwAnswer?: BtwAnswer;
     suggestedRefactors?: string[];
+    imageCount?: number;
+    imageBytes?: number;
   };
 }
 
@@ -228,6 +247,7 @@ export interface IngestionProgress {
   inputTokens?: number;
   outputTokens?: number;
   progressPercent?: number;
+  activeImageCount?: number;
 }
 
 export interface NextJsFileCard {

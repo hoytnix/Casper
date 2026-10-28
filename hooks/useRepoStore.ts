@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useSyncExternalStore } from 'react';
-import { Repo, AppSettings, ChatMessage, IngestionSnapshot, ModelConfig, SuggestedDirective } from '@/types';
+import { Repo, AppSettings, ChatMessage, ImageAttachment, IngestionSnapshot, ModelConfig, SuggestedDirective } from '@/types';
 import { suggestedDirectiveListSchema } from '@/lib/suggestion-schemas';
+import { imageAttachmentSchema } from '@/lib/image-attachments';
 import { normalizeThinkingLevel, normalizeThinkingSummaries } from '@/lib/thinking-levels';
 import { normalizeSearchContextSize } from '@/lib/search-grounding';
 import { formatCompiledPrompt, extractSuggestedRefactors } from '@/lib/utils';
@@ -215,6 +216,44 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const emptySubscribe = () => () => {};
 
+// Storage quota guard: image blobs are large, so chat persistence budgets
+// ~4.5MB for dataUrls. Strips oldest message images first, keeps all text.
+const CHAT_IMAGE_BYTES_BUDGET = 4.5 * 1024 * 1024;
+
+function chatImageBytes(messages: ChatMessage[]): number {
+  let total = 0;
+  for (const m of messages) {
+    if (Array.isArray(m.images)) {
+      for (const img of m.images) total += img.sizeBytes || 0;
+    }
+  }
+  return total;
+}
+
+function stripOldestMessageImages(messages: ChatMessage[]): ChatMessage[] {
+  let stripped = false;
+  const next = messages.map((m) => {
+    if (!stripped && Array.isArray(m.images) && m.images.length > 0) {
+      stripped = true;
+      const { images: _dropped, imageTokensCount: _droppedTokens, ...rest } = m;
+      void _dropped;
+      void _droppedTokens;
+      return rest;
+    }
+    return m;
+  });
+  return next;
+}
+
+// Validates persisted image entries: drops malformed dataUrls, caps at 4
+// per message. Returns a spreadable patch ({} when no valid images).
+function sanitizeMessageImages(m: ChatMessage): { images?: ImageAttachment[] } {
+  if (!Array.isArray(m.images) || m.images.length === 0) return {};
+  const valid = m.images.filter((img) => imageAttachmentSchema.safeParse(img).success);
+  if (valid.length === 0) return {};
+  return { images: valid.slice(0, 4) };
+}
+
 export function useRepoStore() {
   const isLoaded = useSyncExternalStore(
     emptySubscribe,
@@ -413,6 +452,7 @@ export function useRepoStore() {
               ...m,
               content:
                 '> ⚠️ **Upstream Gateway Interrupted (Warmup HTML Detected)**\n> The compilation request timed out upstream and returned the server startup page instead of Markdown.\n\nPlease click **Recompile Prompt** to execute with the optimized cascading pipeline.',
+              ...sanitizeMessageImages(m),
             };
           }
           let suggestedRefactors = m.suggestedRefactors;
@@ -427,6 +467,7 @@ export function useRepoStore() {
             ...m,
             content,
             suggestedRefactors,
+            ...sanitizeMessageImages(m),
           };
         });
         setChatHistory((prev) => ({ ...prev, [repoId]: sanitized }));
@@ -458,8 +499,33 @@ export function useRepoStore() {
       return m;
     });
     setChatHistory((prev) => ({ ...prev, [repoId]: formatted }));
+    // Quota-guarded persist: image blobs can exceed localStorage limits.
+    // Strip oldest message images (text always preserved) and retry until
+    // the payload fits or no images remain. Never throws.
     try {
-      localStorage.setItem(STORAGE_KEYS.CHATS_PREFIX + repoId, JSON.stringify(formatted));
+      let persistable = formatted;
+      while (chatImageBytes(persistable) > CHAT_IMAGE_BYTES_BUDGET) {
+        const stripped = stripOldestMessageImages(persistable);
+        if (stripped === persistable) break;
+        persistable = stripped;
+        if (!persistable.some((m) => Array.isArray(m.images) && m.images.length > 0)) break;
+      }
+      try {
+        localStorage.setItem(STORAGE_KEYS.CHATS_PREFIX + repoId, JSON.stringify(persistable));
+      } catch {
+        const textOnly = persistable.map((m) => {
+          if (!Array.isArray(m.images) || m.images.length === 0) return m;
+          const { images: _dropped, imageTokensCount: _droppedTokens, ...rest } = m;
+          void _dropped;
+          void _droppedTokens;
+          return rest;
+        });
+        try {
+          localStorage.setItem(STORAGE_KEYS.CHATS_PREFIX + repoId, JSON.stringify(textOnly));
+        } catch (e) {
+          console.warn('Failed to persist chat messages to localStorage:', e);
+        }
+      }
     } catch (e) {
       console.warn('Failed to persist chat messages to localStorage:', e);
     }

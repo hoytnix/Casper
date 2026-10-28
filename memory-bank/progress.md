@@ -136,3 +136,11 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Per-repo `antigravity_directives_` cache + dismissed-prompt filter in `/hooks/useRepoStore.ts`; fire-and-forget pre-warm note in `/components/RepoWorkspace.tsx` (local-only, no API cost, no wrangler changes).
   - Hono invariants held: edge-safe Web APIs only on generation paths, Zod validation before UI wiring, no fabricated Hono routers, `/app/api/compile/route.ts` untouched.
   - Verified: `tsc --noEmit` clean, `eslint` clean, `pnpm build` green, 66/66 `node:test` pass, 10/10 validator/grounding behavior probes pass, zero stale static-prompt references, zero Node-only imports in client path.
+|- [x] **Screenshot Upload + Attach in Chat (base64, Ctrl+V paste)**:
+  - Contract first (`ImageMime` / `ImageAttachment` / message + snapshot + progress fields in `/types/index.ts`); validators second (`/lib/image-attachments.ts`: Zod limits 4 / 5MB / 7MB, downscale + JPEG recompress, Gemini/Muse mappers; 13 `node:test` cases).
+  - Client ingestion (`/components/ChatCompiler.tsx`): paste interception, Attach picker, drag/drop, preview strip, inline user-bubble thumbnails outside Markdown, minimized count badge; copy stays text-only.
+  - Orchestration (`/components/RepoWorkspace.tsx`): validated `handleCompilePrompt(prompt, images=[])`, text-only history, counts (not blobs) in snapshot, `+N images` finance notes.
+  - Synthesis last (`/app/api/compile/route.ts` + `/lib/muse-stream.ts`): 400 on invalid/oversized, Gemini `inlineData`, Muse `image_url`/`input_image` (text-only bodies byte-identical), token uplift, `imageCount` in `compiling_start`.
+  - Persistence (`/hooks/useRepoStore.ts`): load validation + 4.5MB quota guard with strip-oldest/text-only fallback; StepLoader image badge (`/components/StepLoader.tsx`).
+  - Hono boundary: repo is Next.js App Router, no Hono routers/bindings exist — invariants applied as Next.js Server/Client boundaries + Zod route contracts instead; no wrangler changes, no new secrets.
+  - Verified: `tsc --noEmit` clean, `eslint` 0 errors, `pnpm build` green, 79/79 `node:test` pass (13 new), zero Node-only imports in client path, zero browser globals in route.

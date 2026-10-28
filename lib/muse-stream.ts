@@ -134,11 +134,17 @@ export function flushMuseStreamParser(parser: MuseStreamParser): string[] {
   return out;
 }
 
+export interface MuseImagePart {
+  mimeType: string;
+  data: string;
+}
+
 export interface MuseRequestInput {
   model: string;
   systemInstruction: string;
   prompt: string;
   historyMessages?: { role: string; content: string }[];
+  images?: MuseImagePart[];
   temperature: number;
   thinkingPayload?: Record<string, unknown>;
   searchGrounding?: boolean;
@@ -165,6 +171,19 @@ export function buildMuseRequestBody(input: MuseRequestInput): Record<string, un
   // Only `reasoning_effort` (plus future allowlisted keys) may travel.
   const { thinkingConfig: _dropped, ...safeThinking } = input.thinkingPayload ?? {};
   void _dropped;
+  // Multimodal user turn: OpenAI-style content parts. Text-only callers
+  // (no images) produce byte-identical bodies to the legacy path.
+  const chatImages = Array.isArray(input.images) ? input.images : [];
+  const userContent: unknown =
+    chatImages.length > 0
+      ? [
+          { type: 'text', text: input.prompt },
+          ...chatImages.map((img) => ({
+            type: 'image_url',
+            image_url: { url: `data:${img.mimeType};base64,${img.data}` },
+          })),
+        ]
+      : input.prompt;
   return {
     model: input.model,
     stream: true,
@@ -174,7 +193,7 @@ export function buildMuseRequestBody(input: MuseRequestInput): Record<string, un
     messages: [
       { role: 'system', content: input.systemInstruction },
       ...(Array.isArray(input.historyMessages) ? input.historyMessages : []),
-      { role: 'user', content: input.prompt },
+      { role: 'user', content: userContent },
     ],
   };
 }
@@ -204,6 +223,18 @@ export function buildMuseResponsesRequestBody(input: MuseRequestInput): Record<s
       ? normalizeMuseResponsesEffort(reasoning_effort)
       : normalizeMuseResponsesEffort('high');
   void restThinking;
+  const responsesImages = Array.isArray(input.images) ? input.images : [];
+  const responsesUserContent: unknown =
+    responsesImages.length > 0
+      ? [
+          { type: 'input_text', text: input.prompt },
+          ...responsesImages.map((img) => ({
+            type: 'input_image',
+            image_url: `data:${img.mimeType};base64,${img.data}`,
+            detail: 'auto',
+          })),
+        ]
+      : input.prompt;
   return {
     model: input.model,
     stream: true,
@@ -216,7 +247,7 @@ export function buildMuseResponsesRequestBody(input: MuseRequestInput): Record<s
     input: [
       { role: 'system', content: input.systemInstruction },
       ...(Array.isArray(input.historyMessages) ? input.historyMessages : []),
-      { role: 'user', content: input.prompt },
+      { role: 'user', content: responsesUserContent },
     ],
   };
 }

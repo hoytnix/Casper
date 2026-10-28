@@ -18,6 +18,7 @@ import {
 import {
   Repo,
   ChatMessage,
+  ImageAttachment,
   IngestionProgress,
   IngestionSnapshot,
   AppSettings,
@@ -27,6 +28,11 @@ import {
   IngestionMode,
   DetectedFramework,
 } from '@/types';
+import {
+  chatImagesSchema,
+  estimateImagesTokens,
+  sumImageBytes,
+} from '@/lib/image-attachments';
 import { ContextInspector } from './ContextInspector';
 import { ChatCompiler } from './ChatCompiler';
 import {
@@ -257,13 +263,27 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
   };
 
   // Live Ingestion & Compilation Pipeline (Agentic or Full)
-  const handleCompilePrompt = async (promptText: string) => {
+  const handleCompilePrompt = async (promptText: string, images: ImageAttachment[] = []) => {
     let currentAssistantMsgId: string | null = null;
+    // Client-side image validation first: reject before any state or network.
+    const imageCheck = chatImagesSchema.safeParse(images);
+    if (!imageCheck.success) {
+      setProgress({
+        step: 'error',
+        message: 'Compilation failed',
+        error: `Attached images exceed limits (max 4, 5MB each, 7MB total).`,
+      });
+      return;
+    }
+    const validImages = imageCheck.data;
+    const imageTokens = estimateImagesTokens(validImages);
+    const imageBytesTotal = sumImageBytes(validImages);
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
       content: promptText,
       timestamp: Date.now(),
+      ...(validImages.length > 0 ? { images: validImages, imageTokensCount: imageTokens } : {}),
     };
 
     const updatedMessagesWithUser = [...messages, userMsg];
@@ -481,6 +501,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             toolTraces,
             explorationTrail: [explorationStepRecord],
             thinkingLevel: requestThinkingLevel,
+            ...(validImages.length > 0
+              ? { imageCount: validImages.length, imageBytes: imageBytesTotal }
+              : {}),
           },
         };
 
@@ -497,11 +520,14 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           step: 'compiling_prompt',
           message: `Synthesizing Casper execution prompt via ${routerEngineUsed} (${routerLatencyMs}ms)...`,
           explorationTrail: [explorationStepRecord],
+          ...(validImages.length > 0 ? { activeImageCount: validImages.length } : {}),
         });
 
         // Multi-turn state: prior turns travel as the stable conversation
         // prefix (server normalizes + bounds them) while the snapshot cache
         // above keeps investigated-file downloads at zero for unchanged SHAs.
+        // History stays text-only on purpose: only the current turn carries
+        // image base64, so follow-ups never re-send old blobs.
         const conversationHistory = messages
           .filter((m) => typeof m.content === 'string' && m.content.trim().length > 0)
           .map((m) => ({ role: m.role, content: m.content }));
@@ -518,6 +544,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             investigatedFiles: downloadedInvestigated,
             conversationHistory,
             improvementPrompt: promptText,
+            images: validImages,
             customApiKey: settings.customApiKey,
             customMuseApiKey: settings.museApiKey,
             githubPat: settings.githubPat,
@@ -828,6 +855,9 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
             costDetails: calculatedCost,
             totalCostUsd: calculatedCost.totalCostUsd,
             modelPricing: resolveModelPricing(modelUsed || calculatedCost.modelName),
+            ...(validImages.length > 0
+              ? { imageCount: validImages.length, imageBytes: imageBytesTotal }
+              : {}),
           };
 
           saveSnapshot(repo.id, agentSnapshot);
@@ -879,7 +909,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               cachedInputCostUsd: calculatedCost.cachedInputCostUsd ?? 0,
               totalCostUsd: calculatedCost.totalCostUsd,
               date: new Date().toISOString().split('T')[0],
-              notes: `Prompt compilation (${mode} mode): "${promptText.slice(0, 50)}..."`,
+              notes: `Prompt compilation (${mode} mode): "${promptText.slice(0, 50)}..."${validImages.length > 0 ? ` +${validImages.length} image${validImages.length === 1 ? '' : 's'}` : ''}`,
               title: `${repo.owner}/${repo.repo} compilation`,
               amount: calculatedCost.totalCostUsd,
               category: modelUsed || calculatedCost.modelName || 'gemini-4-argon',
@@ -916,7 +946,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                 cachedInputCostUsd: calculatedCost.cachedInputCostUsd ?? 0,
                 totalCostUsd: calculatedCost.totalCostUsd,
                 date: new Date().toISOString().split('T')[0],
-                notes: `Prompt compilation (${mode} mode): "${promptText.slice(0, 50)}..."`,
+                notes: `Prompt compilation (${mode} mode): "${promptText.slice(0, 50)}..."${validImages.length > 0 ? ` +${validImages.length} image${validImages.length === 1 ? '' : 's'}` : ''}`,
               }),
             }).catch(() => {});
           } catch (autoLogError) {

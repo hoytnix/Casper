@@ -63,7 +63,14 @@ export const StepLoader: React.FC<StepLoaderProps> = ({ progress }) => {
       <div className="flex items-start gap-3 p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
         <Loader2 className="w-4 h-4 text-indigo-400 animate-spin mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-slate-100">{progress.message}</p>
+          <p className="text-xs font-semibold text-slate-100">
+            {progress.message}
+            {progress.activeImageCount !== undefined && progress.activeImageCount > 0 && (
+              <span className="ml-2 font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/[0.06]">
+                {progress.activeImageCount} image{progress.activeImageCount === 1 ? '' : 's'}
+              </span>
+            )}
+          </p>
           {progress.progressPercent !== undefined && (
             <div className="mt-2.5 space-y-1">
               <div className="flex items-center justify-between text-[10px] font-mono text-indigo-300">

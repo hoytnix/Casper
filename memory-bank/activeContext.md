@@ -1,6 +1,15 @@
 # Active Context: Casper Rebrand + Triple-Framework Cartography (Next.js + Hono + Vite) + Dedicated Settings Page
 
 ## Active Focus
+Enabled screenshot upload + attach in Casper chat (base64, clipboard Ctrl+V paste):
+- **Types (`/types/index.ts`)**: `ImageMime` union + `ImageAttachment` contract; `ChatMessage.images?` / `imageTokensCount?`; `snapshotMeta.imageCount?` / `imageBytes?`; `IngestionSnapshot.imageCount?` / `imageBytes?`; `IngestionProgress.activeImageCount?`.
+- **Validators (`/lib/image-attachments.ts`, new)**: Zod `imageAttachmentSchema` / `chatImagesSchema` (max 4, 5MB each, 7MB total) / `compileImagesInputSchema`; `parseDataUrl`, `estimateBase64Bytes`, `estimateImageTokens` (tile-based w*h/750, NOT byte/4), `toGeminiInlineParts`, `toMuseImageParts`; browser-only `downscaleImageFile` (1600px, JPEG 0.82), `fileToImageAttachment`, `clipboardItemsToFiles`. 13 `node:test` cases in `/lib/image-attachments.test.ts`.
+- **Client (`/components/ChatCompiler.tsx`)**: `onSendMessage(prompt, images?)`; textarea `onPaste` image interception, Attach button + hidden input, drag/drop zone, 72px preview strip with remove + inline errors; user-bubble thumbnails (outside Markdown, click-to-open), minimized image-count badge; copy path untouched (text only, base64 never hits clipboard).
+- **Orchestration (`/components/RepoWorkspace.tsx`)**: `handleCompilePrompt(prompt, images=[])` with Zod pre-check → progress error, no network; text-only history prefix; images in POST body; `activeImageCount` on progress; snapshot carries counts, never blobs; finance notes `+N images` suffix.
+- **Synthesis (`/app/api/compile/route.ts`)**: images validated (Zod + measured bytes, 400s); Gemini `inlineData` parts via multimodal `synthesisMessage` (exploration stays text-only); Muse chat (`image_url`) + Responses (`input_image`) via extended builders in `/lib/muse-stream.ts` (text-only bodies byte-identical); token uplift in `estimatedInputTokens`; `imageCount` in `compiling_start`.
+- **Persistence (`/hooks/useRepoStore.ts`)**: load-time image validation (drop malformed, cap 4); quota-guarded save (4.5MB budget, strip-oldest retry, text-only fallback, never throws). `IngestionSnapshot.files` never carries blobs by construction.
+- **StepLoader (`/components/StepLoader.tsx`)**: image-count badge next to status message.
+- Verified: `tsc --noEmit` clean, `eslint` 0 errors (2 intentional `<img>`-for-data-URL warnings), `pnpm build` green, 79/79 `node:test` pass (13 new), zero Node-only imports in client path, zero browser globals in route.
 Replaced the static 4-choice empty-state heuristic with a Local AI Suggested Architectural Directives pipeline:
 - **Types (`/types/index.ts`)**: `SuggestedDirective`, `DirectiveGenerationContext`, `DirectiveGenerationStatus` appended; existing exports untouched.
 - **Validators (`/lib/suggestion-schemas.ts`, new)**: edge-safe Zod `suggestedDirectiveSchema` / `suggestedDirectiveListSchema` + `sanitizeDirectives` (dedupe, slice 4) + `buildFallbackDirectives` (deterministic graph fallback, `Fallback Keyword` engine).

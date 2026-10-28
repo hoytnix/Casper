@@ -1,6 +1,16 @@
 import { FunctionDeclaration, GoogleGenAI, Type } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
-import { SourceFile, ExplorationStep, SearchContextSize } from '@/types';
+import { ImageAttachment, SourceFile, ExplorationStep, SearchContextSize } from '@/types';
+import {
+  MAX_IMAGES_PER_MESSAGE,
+  MAX_IMAGE_BYTES,
+  MAX_TOTAL_BYTES,
+  chatImagesSchema,
+  estimateBase64Bytes,
+  estimateImagesTokens,
+  toGeminiInlineParts,
+  toMuseImageParts,
+} from '@/lib/image-attachments';
 import { normalizeSearchContextSize } from '@/lib/search-grounding';
 import { fetchFilesOnDemand, normalizeRepoPath } from '@/lib/github';
 import { calculateModelCost, extractSuggestedRefactors } from '@/lib/utils';
@@ -172,6 +182,7 @@ async function* streamMuseCompletionChunks(args: {
   systemInstruction: string;
   prompt: string;
   historyMessages?: { role: string; content: string }[];
+  images?: { mimeType: string; data: string }[];
   temperature: number;
   timeoutMs: number;
   thinkingLevel?: string;
@@ -206,6 +217,7 @@ async function* streamMuseCompletionChunks(args: {
               systemInstruction: args.systemInstruction,
               prompt: args.prompt,
               historyMessages: args.historyMessages,
+              images: args.images,
               temperature: args.temperature,
               searchGrounding: true,
               searchContextSize: args.searchContextSize,
@@ -220,6 +232,7 @@ async function* streamMuseCompletionChunks(args: {
               systemInstruction: args.systemInstruction,
               prompt: args.prompt,
               historyMessages: args.historyMessages,
+              images: args.images,
               temperature: args.temperature,
               // Muse Spark carries the full five-level scale (xhigh/max included).
               thinkingPayload: buildMuseThinkingPayload(
@@ -312,6 +325,7 @@ export async function POST(req: NextRequest) {
       repositoryContext, // For fallback legacy full mode
       investigatedFiles: clientInvestigatedFiles, // Pre-routed files from client
       conversationHistory: rawConversationHistory, // Prior ChatMessage turns for multi-turn caching
+      images: rawImages, // Optional screenshot attachments (base64 data URLs)
       models: customModels,
       requestTimeout = 60,
       searchGrounding: rawSearchGrounding,
@@ -344,6 +358,36 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Multimodal input boundary: Zod validation BEFORE any handler work.
+    // Text-only requests (images absent) flow through exactly as before.
+    const imageCheck = chatImagesSchema.safeParse(
+      rawImages === undefined ? [] : rawImages
+    );
+    if (!imageCheck.success) {
+      return NextResponse.json(
+        {
+          error: `Invalid image attachments (max ${MAX_IMAGES_PER_MESSAGE}, ${MAX_IMAGE_BYTES} bytes each, ${MAX_TOTAL_BYTES} bytes total, PNG/JPEG/WebP/GIF only).`,
+          details: imageCheck.error.issues.map((i) => i.message).slice(0, 4),
+        },
+        { status: 400 }
+      );
+    }
+    const validImages: ImageAttachment[] = imageCheck.data;
+    // Measure actual base64 bytes — never trust client-declared sizeBytes.
+    const actualImageBytes = validImages.reduce(
+      (acc, img) => acc + estimateBase64Bytes(img.dataUrl),
+      0
+    );
+    if (actualImageBytes > MAX_TOTAL_BYTES) {
+      return NextResponse.json(
+        { error: `Image payload exceeds ${MAX_TOTAL_BYTES} bytes.` },
+        { status: 400 }
+      );
+    }
+    const imageTokens = estimateImagesTokens(validImages);
+    const geminiImageParts = toGeminiInlineParts(validImages);
+    const museImageParts = toMuseImageParts(validImages);
 
     const apiKey = customApiKey?.trim() || process.env.GEMINI_API_KEY;
     // Handle model initialization branching for muse-spark-1.3 & muse-spark-1.3-contributor:
@@ -677,12 +721,24 @@ ${treeListing}
             const museHistory = toMuseMessages(historyTurns);
             const historyChars = historyTurns.reduce((acc, t) => acc + t.content.length, 0);
 
-            const estimatedInputTokens = Math.max(
-              1,
-              Math.ceil(
-                (systemInstructionToUse.length + finalPromptPayload.length + historyChars) / 4
-              )
-            );
+            const estimatedInputTokens =
+              Math.max(
+                1,
+                Math.ceil(
+                  (systemInstructionToUse.length + finalPromptPayload.length + historyChars) / 4
+                )
+              ) + imageTokens;
+
+            // Multimodal synthesis turn: text payload plus provider-native
+            // vision parts. Images affect synthesis only — the exploration
+            // loop above stays text-only.
+            const synthesisMessage: string | (
+              | { text: string }
+              | { inlineData: { mimeType: string; data: string } }
+            )[] =
+              geminiImageParts.length > 0
+                ? [{ text: finalPromptPayload }, ...geminiImageParts]
+                : finalPromptPayload;
 
             sendEvent({
               type: 'compiling_start',
@@ -694,6 +750,7 @@ ${treeListing}
               inputTokens: estimatedInputTokens,
               detectedFramework,
               historyTurns: historyTurns.length,
+              ...(validImages.length > 0 ? { imageCount: validImages.length } : {}),
             });
 
             let streamResponse: any = null;
@@ -724,6 +781,7 @@ ${treeListing}
                       systemInstruction: systemInstructionToUse,
                       prompt: finalPromptPayload,
                       historyMessages: museHistory,
+                      images: museImageParts.length > 0 ? museImageParts : undefined,
                       temperature: mode === 'idea' ? 0.4 : 0.2,
                       timeoutMs,
                       thinkingLevel,
@@ -777,7 +835,7 @@ ${treeListing}
                     const chat = ai.chats.create({ model, history: geminiHistory });
                     const candidateStream = await withTimeout(
                       chat.sendMessageStream({
-                        message: finalPromptPayload,
+                        message: synthesisMessage,
                         config,
                       }),
                       timeoutMs,
