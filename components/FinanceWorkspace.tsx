@@ -160,7 +160,7 @@ export const FinanceWorkspace: React.FC = () => {
       </div>
 
       {/* Summary KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* Total Cost Card */}
         <div className="glass-panel p-5 rounded-2xl border border-white/[0.08] relative overflow-hidden group">
           <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all" />
@@ -210,6 +210,25 @@ export const FinanceWorkspace: React.FC = () => {
           </div>
           <div className="text-[11px] text-slate-400 mt-2">
             Generated prompt specifications
+          </div>
+        </div>
+
+        {/* Total Cached Input Tokens Card */}
+        <div className="glass-panel p-5 rounded-2xl border border-white/[0.08] relative overflow-hidden group">
+          <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all" />
+          <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-3">
+            <span>Cached Input Tokens</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <Cpu className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">
+            {summary ? summary.totalCachedInputTokens.toLocaleString() : '0'}
+          </div>
+          <div className="text-[11px] text-amber-400 mt-2 font-medium">
+            {summary && summary.totalCachedCostUsd > 0
+              ? `$${summary.totalCachedCostUsd.toFixed(4)} discounted cached spend`
+              : 'Context caching discount active'}
           </div>
         </div>
 
@@ -400,6 +419,7 @@ export const FinanceWorkspace: React.FC = () => {
                 <th className="py-3 px-4">Model Name</th>
                 <th className="py-3 px-4 text-right">Input Tokens</th>
                 <th className="py-3 px-4 text-right">Output Tokens</th>
+                <th className="py-3 px-4 text-right">Cached Input</th>
                 <th className="py-3 px-4 text-right">Cost (USD)</th>
                 <th className="py-3 px-4">Date</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -408,7 +428,7 @@ export const FinanceWorkspace: React.FC = () => {
             <tbody className="divide-y divide-white/[0.04] text-xs">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
                       <span>Loading token cost records...</span>
@@ -432,6 +452,12 @@ export const FinanceWorkspace: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-4 text-right font-mono text-slate-300">
                       {record.outputTokens.toLocaleString()}
+                    </td>
+                    <td
+                      className="py-3.5 px-4 text-right font-mono text-amber-300"
+                      title={(record.cachedInputCostUsd ?? 0) > 0 ? `Cached cost: $${(record.cachedInputCostUsd ?? 0).toFixed(6)}` : 'No cached input tokens'}
+                    >
+                      {(record.cachedInputTokens ?? 0).toLocaleString()}
                     </td>
                     <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-400">
                       ${record.totalCostUsd.toFixed(4)}
@@ -459,7 +485,7 @@ export const FinanceWorkspace: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-slate-500">
+                  <td colSpan={8} className="py-16 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Coins className="w-8 h-8 opacity-30 text-slate-400" />
                       <span>No token cost records found. Log token usage or compile prompts to populate real data.</span>

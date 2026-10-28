@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Coins, Calendar, Tag, FileText, Cpu, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { TokenCostRecord } from '@/types';
+import { calculateModelCost } from '@/lib/utils';
 
 const STORAGE_KEY = 'nextjs_expert_token_records_v1';
 
@@ -12,9 +13,13 @@ const tokenRecordFormSchema = z.object({
   modelName: z.string().trim().min(2, 'Model name is required'),
   inputTokens: z.number().nonnegative('Input tokens must be >= 0'),
   outputTokens: z.number().nonnegative('Output tokens must be >= 0'),
+  cachedInputTokens: z.number().nonnegative('Cached tokens must be >= 0').optional(),
   totalCostUsd: z.number().nonnegative('Cost must be >= 0'),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Valid date (YYYY-MM-DD) is required'),
   notes: z.string().optional(),
+}).refine((d) => d.cachedInputTokens === undefined || d.cachedInputTokens <= d.inputTokens, {
+  message: 'Cached tokens cannot exceed input tokens',
+  path: ['cachedInputTokens'],
 });
 
 interface AddTransactionModalProps {
@@ -42,6 +47,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [modelName, setModelName] = useState('gemini-4-argon');
   const [inputTokens, setInputTokens] = useState('50000');
   const [outputTokens, setOutputTokens] = useState('10000');
+  const [cachedInputTokens, setCachedInputTokens] = useState('');
   const [totalCostUsd, setTotalCostUsd] = useState('0.25');
   const [date, setDate] = useState(today);
   const [notes, setNotes] = useState('');
@@ -70,12 +76,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const numInput = parseInt(inputTokens, 10);
     const numOutput = parseInt(outputTokens, 10);
     const numCost = parseFloat(totalCostUsd);
+    const rawCached = cachedInputTokens.trim() === '' ? undefined : parseInt(cachedInputTokens, 10);
 
     const validation = tokenRecordFormSchema.safeParse({
       repoName,
       modelName,
       inputTokens: isNaN(numInput) ? -1 : numInput,
       outputTokens: isNaN(numOutput) ? -1 : numOutput,
+      cachedInputTokens: rawCached === undefined ? undefined : (isNaN(rawCached) ? -1 : rawCached),
       totalCostUsd: isNaN(numCost) ? -1 : numCost,
       date,
       notes: notes.trim() || undefined,
@@ -96,12 +104,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     try {
       setIsSubmitting(true);
 
+      const cachedCount = validation.data.cachedInputTokens ?? 0;
+      const cachedCostUsd = cachedCount > 0
+        ? calculateModelCost(validation.data.modelName, validation.data.inputTokens, validation.data.outputTokens, cachedCount).cachedInputCostUsd
+        : undefined;
+
       const newRecord: TokenCostRecord = {
         id: `tok-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         repoName: validation.data.repoName,
         modelName: validation.data.modelName,
         inputTokens: validation.data.inputTokens,
         outputTokens: validation.data.outputTokens,
+        cachedInputTokens: cachedCount > 0 ? cachedCount : undefined,
+        cachedInputCostUsd: cachedCostUsd,
         totalCostUsd: validation.data.totalCostUsd,
         date: validation.data.date,
         notes: validation.data.notes,
@@ -125,11 +140,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       fetch('/api/finance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(validation.data),
+        body: JSON.stringify({ ...validation.data, cachedInputCostUsd: cachedCostUsd }),
       }).catch(() => {});
 
       // Reset form
       setRepoName('owner/repo');
+      setCachedInputTokens('');
       setNotes('');
       setDate(today);
       onSuccess();
@@ -217,7 +233,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           </div>
 
           {/* Tokens & Cost Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label htmlFor="input-tokens" className="text-xs font-medium text-slate-300">
                 Input Tokens *
@@ -246,6 +262,25 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 onChange={(e) => setOutputTokens(e.target.value)}
                 className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-slate-900/70 border border-white/[0.08] text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="cached-tokens" className="text-xs font-medium text-slate-300">
+                Cached Input Tokens
+              </label>
+              <input
+                id="cached-tokens"
+                type="number"
+                min="0"
+                step="100"
+                placeholder="0"
+                value={cachedInputTokens}
+                onChange={(e) => setCachedInputTokens(e.target.value)}
+                className={`w-full px-3 py-2 text-xs font-mono rounded-xl bg-slate-900/70 border text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition ${
+                  errors.cachedInputTokens ? 'border-rose-500/60 bg-rose-500/5' : 'border-white/[0.08]'
+                }`}
+              />
+              {errors.cachedInputTokens && <p className="text-[11px] text-rose-400">{errors.cachedInputTokens}</p>}
             </div>
 
             <div className="space-y-1.5">

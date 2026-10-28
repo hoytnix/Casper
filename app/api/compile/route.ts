@@ -16,11 +16,16 @@ import {
   normalizeThinkingSummaries,
 } from '@/lib/thinking-levels';
 import {
+  buildMuseEndpoint,
   buildMuseRequestBody,
   createMuseStreamParser,
   flushMuseStreamParser,
   pushMuseSseText,
 } from '@/lib/muse-stream';
+import {
+  summarizeCascadeFailures,
+  type CascadeAttemptFailure,
+} from '@/lib/cascade-failures';
 
 const NEXTJS_EXPERT_SYSTEM_INSTRUCTION = `You are Casper, the friendly ghost who reads all your code — a Principal Architect and Autonomous Prompt Compiler specializing exclusively in Next.js 15+ App Router, React Server Components (RSC), Server Actions, Route Handlers, and modern TypeScript architecture.
 You have been given a Next.js repository structure and the developer's requested improvements.
@@ -173,7 +178,11 @@ async function* streamMuseCompletionChunks(args: {
     (timer as unknown as { unref: () => void }).unref();
   }
   try {
-    const res = await fetch(`${MUSE_API_BASE_URL}/chat/completions`, {
+    // The endpoint echoes in failures (no secret travels in the URL —
+    // the key stays in the Bearer header) so a wrong MUSE_API_BASE_URL
+    // is diagnosable from the error alone.
+    const endpoint = buildMuseEndpoint(MUSE_API_BASE_URL);
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -197,7 +206,7 @@ async function* streamMuseCompletionChunks(args: {
     });
     if (!res.ok || !res.body) {
       const errText = await res.text().catch(() => '');
-      throw new Error(`Muse API error (${res.status}): ${errText.slice(0, 300)}`);
+      throw new Error(`Muse API error (${res.status}) at ${endpoint}: ${errText.slice(0, 300)}`);
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -655,6 +664,7 @@ ${treeListing}
             let streamResponse: any = null;
             let streamModel = '';
             let streamPass = 1;
+            const cascadeFailures: CascadeAttemptFailure[] = [];
 
             // thinkingLevel/thinkingSummaries normalized above (pre-overlay);
             // Gemini maps Muse-only xhigh/max down to high here.
@@ -701,6 +711,7 @@ ${treeListing}
                     break;
                   } catch (err) {
                     console.warn(`[Prompt Stream Cascade] ${model} failed in Pass ${pass}:`, err);
+                    cascadeFailures.push({ model, pass, error: err });
                     continue;
                   }
                 }
@@ -747,6 +758,7 @@ ${treeListing}
                     break;
                   } catch (err) {
                     console.warn(`[Prompt Stream Cascade] ${model} (thinking: ${useThinking}) failed in Pass ${pass}:`, err);
+                    cascadeFailures.push({ model, pass, thinking: useThinking, error: err });
                   }
                 }
                 if (streamResponse) break;
@@ -758,6 +770,7 @@ ${treeListing}
               sendEvent({
                 type: 'error',
                 error: 'All cascading models failed to stream the response after 2 passes.',
+                details: summarizeCascadeFailures(cascadeFailures),
               });
               controller.close();
               return;

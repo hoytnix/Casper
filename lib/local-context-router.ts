@@ -21,6 +21,7 @@ declare global {
       availability: () => Promise<'available' | 'readily' | 'no' | 'after-download'>;
       create: (options?: {
         initialPrompts?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+        outputLanguage?: string;
         monitor?: (m: { addEventListener: (event: string, cb: (e: any) => void) => void }) => void;
       }) => Promise<any>;
     };
@@ -152,6 +153,7 @@ ${routerScopeNote}`;
 
           cachedBaseSession = await lm.create({
             initialPrompts: [{ role: 'system', content: systemPrompt }],
+            outputLanguage: 'en',
           });
           cachedRepoKey = repoIdentifier;
           nanoReady = true;

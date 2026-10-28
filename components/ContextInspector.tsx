@@ -233,8 +233,12 @@ export const ContextInspector: React.FC<ContextInspectorProps> = ({
                 </div>
                 {(cost.cachedInputTokens ?? 0) > 0 && (
                   <div className="flex items-center justify-between text-slate-400">
-                    <span>Cached ({(cost.cachedInputTokens ?? 0).toLocaleString()} tok):</span>
-                    <span className="text-emerald-400 font-semibold">${(cost.cachedInputCostUsd ?? 0).toFixed(6)}</span>
+                    <span className="text-amber-400 font-medium">
+                      Cached Input ({(cost.cachedInputTokens ?? 0).toLocaleString()} tok):
+                    </span>
+                    <span className="text-amber-300 font-semibold">
+                      ${(cost.cachedInputCostUsd ?? 0).toFixed(6)}
+                    </span>
                   </div>
                 )}
                 <div className="pt-1 border-t border-slate-800 flex items-center justify-between text-slate-300 text-[10px]">

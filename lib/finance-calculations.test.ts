@@ -34,6 +34,24 @@ test('calculateTokenCostSummary handles empty records', () => {
   assert.deepEqual(summary.historicalTrend, []);
 });
 
+test('calculateTokenCostSummary aggregates cached input tokens and costs', () => {
+  const records: TokenCostRecord[] = [
+    { id: 'c1', repoName: 'a/b', modelName: 'gemini-4-argon', inputTokens: 10000, outputTokens: 1000, cachedInputTokens: 4000, cachedInputCostUsd: 0.0008, totalCostUsd: 0.02, date: '2026-06-01' },
+    { id: 'c2', repoName: 'a/b', modelName: 'gemini-4-argon', inputTokens: 5000, outputTokens: 500, totalCostUsd: 0.01, date: '2026-06-01' },
+    { id: 'c3', repoName: 'c/d', modelName: 'gemini-3.8-flash', inputTokens: 2000, outputTokens: 200, cachedInputTokens: 9000, cachedInputCostUsd: 0.0001, totalCostUsd: 0.005, date: '2026-06-02' },
+  ];
+  const summary = calculateTokenCostSummary(records);
+
+  // Cached counts clamp to [0, inputTokens]; missing fields count as 0
+  assert.equal(summary.totalCachedInputTokens, 6000);
+  assert.equal(summary.totalCachedCostUsd, 0.0009);
+  assert.equal(summary.byModel['gemini-4-argon'].cachedInputTokens, 4000);
+  assert.equal(summary.byModel['gemini-4-argon'].cachedInputCostUsd, 0.0008);
+  assert.equal(summary.byModel['gemini-3.8-flash'].cachedInputTokens, 2000);
+  assert.equal(summary.historicalTrend[0].cachedInputTokens, 4000);
+  assert.equal(summary.historicalTrend[1].cachedInputTokens, 2000);
+});
+
 test('filterTokenRecords filters by modelName and search query', () => {
   const flashRecords = filterTokenRecords(testRecords, { modelName: 'gemini-3.8-flash' });
   assert.equal(flashRecords.length, 2);

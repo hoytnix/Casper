@@ -99,3 +99,20 @@ Production-Ready. Triple-framework (Next.js + Hono + Vite) cartography live alon
   - Dual-provider cascade in compile route (`/app/api/compile/route.ts`): Bearer-key Muse SSE streaming, Gemini-only tool exploration, graceful skip/fallback
   - Verified: `node --test lib/utils.test.ts` 10/10 (3 new), `tsc --noEmit` clean, `eslint` clean, `next build` green
   - Open item: default `MUSE_API_BASE_URL` (`https://api.muse.ai/v1`) is unconfirmed — override via env if Muse publishes a different chat-completions host
+
+## Completed Modules (cont.)
+- [x] **Muse 404 Root-Caused to Env Base URL + Endpoint Echo**:
+  - Production 404 path `/hatch/v1/chat/completions` traced to operator `MUSE_API_BASE_URL` (no `/hatch/` in repo code; host alive, path wrong)
+  - `buildMuseEndpoint` helper + endpoint in Muse errors (`/lib/muse-stream.ts`, `/app/api/compile/route.ts`, 1 new test); pending: operator corrects env value, commits get pushed/deployed
+  - Verified: 57/57 `node:test`, `tsc` clean, `eslint` clean, `pnpm build` green
+- [x] **Self-Diagnosing Cascade Failures + Nano Output-Language Fix**:
+  - `summarizeCascadeFailures` helper + 4 `node:test` cases (`/lib/cascade-failures.ts`, `/lib/cascade-failures.test.ts`); per-model reasons threaded into the SSE `error` event (`/app/api/compile/route.ts`) and surfaced in the client error notice (`/components/RepoWorkspace.tsx`)
+  - `outputLanguage: 'en'` on Gemini Nano session creation (`/lib/local-context-router.ts`)
+  - Verified: 56/56 `node:test`, `tsc` clean, `eslint` clean, `pnpm build` green
+- [x] **Cached Input Token Visibility + Far-Left Inspector Hamburger**:
+  - `TokenCostSummary` cached totals / per-model / per-day fields (`/types/index.ts`); aggregation with `[0, input]` clamping (`/lib/finance-calculations.ts` + 1 new `node:test` case)
+  - Amber `Cached Input` breakdown row in `/components/ContextInspector.tsx` (renders only when cached > 0)
+  - Cached KPI card + `Cached Input` ledger column with cost tooltips in `/components/FinanceWorkspace.tsx`
+  - Optional cached-tokens input with pricing-derived cached cost in `/components/AddTransactionModal.tsx`
+  - Icon-only Context Inspector toggle at the far-left sub-header edge; right-aligned trigger removed (`/components/RepoWorkspace.tsx`)
+  - Verified: 52/52 `node:test`, `tsc` clean, `eslint` clean (full `pnpm lint`), `pnpm build` green

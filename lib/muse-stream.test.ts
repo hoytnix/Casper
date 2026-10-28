@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MUSE_MAX_OUTPUT_TOKENS,
+  buildMuseEndpoint,
   buildMuseRequestBody,
   createMuseStreamParser,
   extractMuseDeltaText,
@@ -130,5 +131,22 @@ test('request body pins an explicit output cap so completions are never single-t
   assert.ok(
     (MUSE_MAX_OUTPUT_TOKENS as number) >= 8192,
     'cap must fit long compiled prompts'
+  );
+});
+
+test('endpoint builder appends the completions suffix to the operator base URL', () => {
+  assert.equal(
+    buildMuseEndpoint('https://api.muse.ai/v1'),
+    'https://api.muse.ai/v1/chat/completions'
+  );
+  assert.equal(
+    buildMuseEndpoint('https://api.muse.ai/v1/'),
+    'https://api.muse.ai/v1/chat/completions'
+  );
+  // Operator-owned path prefixes pass through verbatim so a wrong env
+  // value (e.g. a /hatch/v1 prefix that 404s) is echoed back, not hidden.
+  assert.equal(
+    buildMuseEndpoint('https://example.com/hatch/v1'),
+    'https://example.com/hatch/v1/chat/completions'
   );
 });

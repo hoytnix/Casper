@@ -142,6 +142,15 @@ export interface MuseRequestInput {
   thinkingPayload?: Record<string, unknown>;
 }
 
+/**
+ * Joins an operator-configured base URL with the chat-completions suffix.
+ * The base path passes through verbatim (trailing slashes stripped) so a
+ * misconfigured env value surfaces in errors instead of being rewritten.
+ */
+export function buildMuseEndpoint(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+}
+
 /** Builds the JSON body POSTed to the Muse chat-completions endpoint. */
 export function buildMuseRequestBody(input: MuseRequestInput): Record<string, unknown> {
   return {

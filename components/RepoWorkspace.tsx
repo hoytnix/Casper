@@ -755,7 +755,16 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                     investigatedFiles = evt.investigatedFiles;
                   }
                 } else if (evt.type === 'error') {
-                  throw new Error(evt.error || 'Agentic exploration failed');
+                  const serverError =
+                    typeof evt.error === 'string' && evt.error.length > 0
+                      ? evt.error
+                      : 'Agentic exploration failed';
+                  const serverDetails =
+                    typeof evt.details === 'string' && evt.details.length > 0
+                      ? `\n\nProvider details:\n${evt.details}`
+                      : '';
+                  console.error('Compile stream server error:', serverError, serverDetails);
+                  throw new Error(`${serverError}${serverDetails}`);
                 }
               } catch (parseErr) {
                 console.warn('Could not parse SSE event:', parseErr);
@@ -983,8 +992,21 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
     <div className="flex-1 flex flex-col min-h-0 h-[calc(100vh-3.75rem)]">
       {/* Workspace Sub-Header */}
       <div className="h-13 border-b border-white/[0.08] bg-[#07090e]/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between gap-4 flex-wrap">
-        {/* Repo & Branch Info */}
+        {/* Left Zone: Hamburger Context Inspector Toggle + Repo & Branch Info */}
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsDrawerOpen(!isDrawerOpen)}
+            className={`flex items-center justify-center p-2 rounded-lg border text-xs font-medium transition cursor-pointer ${
+              isDrawerOpen
+                ? 'bg-indigo-600/20 border-indigo-500/30 text-indigo-300'
+                : 'bg-slate-900 border-white/[0.08] text-slate-400 hover:text-white hover:border-white/20'
+            }`}
+            title="Toggle Context Inspector"
+            aria-label="Toggle Context Inspector Drawer"
+          >
+            <FolderTree className="w-4 h-4" />
+          </button>
+
           <div className="flex items-center gap-2 text-xs">
             <span className="font-mono text-slate-400">{repo.owner}/</span>
             <span className="font-mono font-bold text-white text-sm">{repo.repo}</span>
@@ -1067,7 +1089,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Controls: Mode Switcher, Status & Drawer Toggle */}
+        {/* Right Zone: Mode Switcher, Cost Badges & Status */}
         <div className="flex items-center gap-3">
           {/* Mode Switcher Segmented Control */}
           <div className="flex items-center bg-slate-900/90 border border-white/[0.08] rounded-lg p-0.5 text-xs overflow-x-auto">
@@ -1126,19 +1148,6 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           )}
 
           {getStatusBadge()}
-
-          <button
-            onClick={() => setIsDrawerOpen(!isDrawerOpen)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-medium transition ${
-              isDrawerOpen
-                ? 'bg-indigo-600/20 border-indigo-500/30 text-indigo-300'
-                : 'bg-slate-900 border-white/[0.08] text-slate-400 hover:text-white'
-            }`}
-            title="Toggle Context Inspector"
-          >
-            <FolderTree className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Context Inspector</span>
-          </button>
         </div>
       </div>
 

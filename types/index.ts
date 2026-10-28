@@ -330,13 +330,16 @@ export interface TokenCostSummary {
   totalSpentUsd: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCachedInputTokens: number;
+  totalCachedCostUsd: number;
   totalRuns: number;
-  byModel: Record<string, { cost: number; inputTokens: number; outputTokens: number; runs: number }>;
+  byModel: Record<string, { cost: number; inputTokens: number; outputTokens: number; cachedInputTokens: number; cachedInputCostUsd: number; runs: number }>;
   historicalTrend: {
     date: string;
     costUsd: number;
     inputTokens: number;
     outputTokens: number;
+    cachedInputTokens: number;
     runs: number;
     amount?: number;
     expenseAmount?: number;
