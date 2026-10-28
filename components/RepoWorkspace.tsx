@@ -833,6 +833,8 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
               modelName: modelUsed || calculatedCost.modelName || 'gemini-4-argon',
               inputTokens: calculatedCost.inputTokens,
               outputTokens: calculatedCost.outputTokens,
+              cachedInputTokens: calculatedCost.cachedInputTokens ?? 0,
+              cachedInputCostUsd: calculatedCost.cachedInputCostUsd ?? 0,
               totalCostUsd: calculatedCost.totalCostUsd,
               date: new Date().toISOString().split('T')[0],
               notes: `Prompt compilation (${mode} mode): "${promptText.slice(0, 50)}..."`,
@@ -868,6 +870,8 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
                 modelName: modelUsed || calculatedCost.modelName || 'gemini-4-argon',
                 inputTokens: calculatedCost.inputTokens,
                 outputTokens: calculatedCost.outputTokens,
+                cachedInputTokens: calculatedCost.cachedInputTokens ?? 0,
+                cachedInputCostUsd: calculatedCost.cachedInputCostUsd ?? 0,
                 totalCostUsd: calculatedCost.totalCostUsd,
                 date: new Date().toISOString().split('T')[0],
                 notes: `Prompt compilation (${mode} mode): "${promptText.slice(0, 50)}..."`,
@@ -1092,7 +1096,7 @@ export const RepoWorkspace: React.FC<RepoWorkspaceProps> = ({
           {snapshot?.costDetails && (
             <div
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/20 text-emerald-300 font-mono text-xs shadow-sm cursor-help"
-              title={`Latest Snapshot API Cost: ${formatCostUsd(snapshot.costDetails.totalCostUsd)}\n• Model: ${snapshot.costDetails.modelName}\n• Input: ${snapshot.costDetails.inputTokens.toLocaleString()} tokens ($${snapshot.costDetails.inputCostUsd.toFixed(6)})\n• Output: ${snapshot.costDetails.outputTokens.toLocaleString()} tokens ($${snapshot.costDetails.outputCostUsd.toFixed(6)})`}
+              title={`Latest Snapshot API Cost: ${formatCostUsd(snapshot.costDetails.totalCostUsd)}\n• Model: ${snapshot.costDetails.modelName}\n• Input: ${snapshot.costDetails.inputTokens.toLocaleString()} tokens ($${snapshot.costDetails.inputCostUsd.toFixed(6)})\n• Output: ${snapshot.costDetails.outputTokens.toLocaleString()} tokens ($${snapshot.costDetails.outputCostUsd.toFixed(6)})${(snapshot.costDetails.cachedInputTokens ?? 0) > 0 ? `\n• Cached input: ${(snapshot.costDetails.cachedInputTokens ?? 0).toLocaleString()} tokens ($${(snapshot.costDetails.cachedInputCostUsd ?? 0).toFixed(6)})` : ''}`}
             >
               <Coins className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
               <span className="font-semibold text-emerald-300 tabular-nums">

@@ -78,8 +78,10 @@ export interface ModelPricingTier {
 export interface ModelCostDetails {
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens?: number;
   inputCostUsd: number;
   outputCostUsd: number;
+  cachedInputCostUsd?: number;
   totalCostUsd: number;
   modelName: string;
 }
@@ -303,6 +305,8 @@ export interface TokenCostRecord {
   modelName: string; // e.g. gemini-4-argon, gemini-2.5-pro, gemini-3.8-flash
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens?: number;
+  cachedInputCostUsd?: number;
   totalCostUsd: number;
   date: string; // ISO string YYYY-MM-DD
   notes?: string;

@@ -8,6 +8,8 @@ const createTokenRecordSchema = z.object({
   modelName: z.string().trim().min(1, 'Model name is required'),
   inputTokens: z.coerce.number().nonnegative('Input tokens must be >= 0'),
   outputTokens: z.coerce.number().nonnegative('Output tokens must be >= 0'),
+  cachedInputTokens: z.coerce.number().nonnegative().optional(),
+  cachedInputCostUsd: z.coerce.number().nonnegative().optional(),
   totalCostUsd: z.coerce.number().nonnegative('Total cost must be >= 0'),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be formatted YYYY-MM-DD'),
   notes: z.string().optional(),
@@ -41,6 +43,8 @@ export async function POST(req: NextRequest) {
       modelName: body.modelName || body.category || 'gemini-4-argon',
       inputTokens: body.inputTokens !== undefined ? body.inputTokens : Math.round((body.amount || 10) * 1000),
       outputTokens: body.outputTokens !== undefined ? body.outputTokens : Math.round((body.amount || 10) * 200),
+      cachedInputTokens: body.cachedInputTokens,
+      cachedInputCostUsd: body.cachedInputCostUsd,
       totalCostUsd: body.totalCostUsd !== undefined ? body.totalCostUsd : (body.amount || 0.1),
       date: body.date || new Date().toISOString().split('T')[0],
       notes: body.notes || body.title,
@@ -58,7 +62,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { repoName, modelName, inputTokens, outputTokens, totalCostUsd, date, notes } = parsed.data;
+    const { repoName, modelName, inputTokens, outputTokens, cachedInputTokens, cachedInputCostUsd, totalCostUsd, date, notes } = parsed.data;
 
     const newRecord: TokenCostRecord = {
       id: `tok-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -66,6 +70,8 @@ export async function POST(req: NextRequest) {
       modelName,
       inputTokens,
       outputTokens,
+      cachedInputTokens,
+      cachedInputCostUsd,
       totalCostUsd,
       date,
       notes,

@@ -799,8 +799,10 @@ ${treeListing}
             const costDetails = {
               inputTokens: estimatedInputTokens,
               outputTokens: estimatedOutputTokens,
+              cachedInputTokens: costCalculation.cachedInputTokens,
               inputCostUsd: costCalculation.inputCostUsd,
               outputCostUsd: costCalculation.outputCostUsd,
+              cachedInputCostUsd: costCalculation.cachedInputCostUsd,
               totalCostUsd: costCalculation.totalCostUsd,
               modelName: costCalculation.modelName,
             };

@@ -41,3 +41,9 @@ Implemented collapsible chat spoilers + explicit Muse Spark pricing precedence:
 - **Chat (`/components/ChatCompiler.tsx`)**: local `minimizedMsgs` set + `toggleMinimize`/`isMsgMinimized` (persisted flag respected, toggle overrides), chevron button in header, spoiled banner body; removed unused `Terminal/Clock/CheckCircle2/Coins/Receipt/Cpu` + unused cost util imports, added `ChevronUp` and optional `onToggleMinimize`.
 - **Pricing (`/lib/utils.ts`)**: explicit `muse-spark-1.3-contributor` match first, then `muse-spark-1.3`/`muse-` before all Gemini fallbacks.
 - Verified: 32/32 `node:test` pass, `tsc --noEmit` clean, `eslint` clean on touched files, `pnpm build` green.
+Implemented token caching discounts in cost calculations:
+- **Pricing (`/lib/utils.ts`)**: `cachedInputCostPerMillion` on all 7 tiers (repo convention: 10% of standard input rate); `calculateModelCost(..., cachedInputTokens = 0)` splits input cost into fresh + cached portions, clamps cached to `[0, input]`, returns `cachedInputTokens`/`cachedInputCost(Usd)`. Default 0 preserves legacy math exactly.
+- **Types (`/types/index.ts`)**: optional `cachedInputTokens`/`cachedInputCostUsd` on `ModelCostDetails` and `TokenCostRecord`.
+- **Callers**: `/app/api/compile/route.ts` done-event `costDetails`, `/components/RepoWorkspace.tsx` ledger record + finance POST, `/app/api/finance/route.ts` zod schema + record all carry cached fields (0 until a measured count is supplied — streams still estimate tokens via char/4 and never read provider `usageMetadata`, so no real cached counts exist yet).
+- **UI**: cached row in `/components/ContextInspector.tsx` breakdown + cached line in workspace cost tooltip, both shown only when cached tokens > 0.
+- Verified: 36/36 `node:test` pass (4 new cached-cost cases), `tsc --noEmit` clean, `eslint` clean, `pnpm build` green.

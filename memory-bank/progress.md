@@ -34,6 +34,11 @@
   - `/components/Header.tsx` settings control is now a `<Link href="/settings">` (removed `onOpenSettings`, optional `onOpenAddModal`); `/components/SettingsModal.tsx` deleted; modal state/JSX purged from `/app/page.tsx` and `/app/chat/[owner]/[repo]/page.tsx`.
   - Verified: `eslint` clean on all touched files, `next build` green with `/settings` prerendered as static content.
 
+- [x] **Token Caching Discounts in Cost Calculations**:
+  - Cached input rates per tier + `cachedInputTokens` split in `calculateModelCost` (`/lib/utils.ts`); optional cached fields on `ModelCostDetails`/`TokenCostRecord` (`/types/index.ts`).
+  - Threaded through compile-route `costDetails`, workspace ledger + finance POST, finance API schema/record, Context Inspector breakdown + cost tooltip (cached rows render only when > 0).
+  - Finance summary aggregates discounted `totalCostUsd` unchanged; streams still use char/4 estimates (no provider `usageMetadata` captured yet), so cached counts default to 0.
+  - Verified: 36/36 `node:test` (4 new), `tsc` clean, `eslint` clean, `pnpm build` green.
 - [x] **Collapsible Chat Spoilers + Muse Spark Pricing Precedence**:
   - `ChatMessage.isMinimized?` (`/types/index.ts`); minimize/maximize chevron + spoiled banner in `/components/ChatCompiler.tsx` with unused-import purge.
   - Explicit contributor → standard → Gemini ordering in `resolveModelPricing` (`/lib/utils.ts`); existing `/lib/utils.test.ts` Muse assertions (10/10) confirm $0.10/$0.20 and $1.25/$4.25 tiers.

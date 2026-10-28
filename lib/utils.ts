@@ -114,6 +114,9 @@ export function formatCompiledPrompt(content: string): string {
  * - Gemini 3.5 Flash: $1.50/M input, $9.00/M output
  * - Gemini 3.5 Flash-Lite: $0.30/M input, $2.50/M output
  * - Gemini 3.6 Flash: $1.35/M input, $6.75/M output
+ *
+ * Cached input reads bill at `cachedInputCostPerMillion`. Repo convention: 10%
+ * of the standard input rate per tier (mirrors the provider cached-read ratio).
  */
 const isAfterNov30_2026 = typeof window !== 'undefined' || typeof process !== 'undefined'
   ? new Date() > new Date('2026-11-30T23:59:59Z')
@@ -123,36 +126,43 @@ export const MODEL_PRICING_TIERS: Record<string, ModelPricingTier> = {
   'muse-spark-1.3-contributor': {
     name: 'Muse Spark 1.3 Contributor',
     inputCostPerMillion: 0.10,
+    cachedInputCostPerMillion: 0.01,
     outputCostPerMillion: 0.20,
   },
   'muse-spark-1.3': {
     name: 'Muse Spark 1.3',
     inputCostPerMillion: 1.25,
+    cachedInputCostPerMillion: 0.125,
     outputCostPerMillion: 4.25,
   },
   'gemini-4-argon': {
     name: 'Gemini 4 Argon',
     inputCostPerMillion: isAfterNov30_2026 ? 4.00 : 2.00,
+    cachedInputCostPerMillion: isAfterNov30_2026 ? 0.40 : 0.20,
     outputCostPerMillion: isAfterNov30_2026 ? 20.00 : 10.00,
   },
   'gemini-3.8-flash': {
     name: 'Gemini 3.8 Flash',
     inputCostPerMillion: 0.75,
+    cachedInputCostPerMillion: 0.075,
     outputCostPerMillion: 3.75,
   },
   'gemini-3.5-flash': {
     name: 'Gemini 3.5 Flash',
     inputCostPerMillion: 1.50,
+    cachedInputCostPerMillion: 0.15,
     outputCostPerMillion: 9.00,
   },
   'gemini-3.5-flash-lite': {
     name: 'Gemini 3.5 Flash-Lite',
     inputCostPerMillion: 0.30,
+    cachedInputCostPerMillion: 0.03,
     outputCostPerMillion: 2.50,
   },
   'gemini-3.6-flash': {
     name: 'Gemini 3.6 Flash',
     inputCostPerMillion: 1.35,
+    cachedInputCostPerMillion: 0.135,
     outputCostPerMillion: 6.75,
   },
 };
@@ -190,39 +200,53 @@ export function resolveModelPricing(modelName: string): ModelPricingTier {
 
 /**
  * Computes dynamic API costs based on model pricing tiers and token counts.
+ * `cachedInputTokens` (clamped to [0, inputTokens]) bill at the tier's
+ * `cachedInputCostPerMillion` instead of the standard input rate. Defaults to
+ * 0, which preserves the legacy uncached calculation exactly.
  */
 export function calculateModelCost(
   modelName: string,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
+  cachedInputTokens = 0
 ): {
   inputCost: number;
   outputCost: number;
+  cachedInputCost: number;
   totalCost: number;
   inputCostUsd: number;
   outputCostUsd: number;
+  cachedInputCostUsd: number;
   totalCostUsd: number;
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens: number;
   modelName: string;
 } {
   const pricing = resolveModelPricing(modelName);
   const safeInput = Math.max(0, Math.round(inputTokens || 0));
   const safeOutput = Math.max(0, Math.round(outputTokens || 0));
+  const safeCached = Math.min(safeInput, Math.max(0, Math.round(cachedInputTokens || 0)));
+  const cachedRate = pricing.cachedInputCostPerMillion ?? pricing.inputCostPerMillion;
 
-  const inputCost = (safeInput / 1_000_000) * pricing.inputCostPerMillion;
+  const freshInputCost = ((safeInput - safeCached) / 1_000_000) * pricing.inputCostPerMillion;
+  const cachedCost = (safeCached / 1_000_000) * cachedRate;
+  const inputCost = freshInputCost + cachedCost;
   const outputCost = (safeOutput / 1_000_000) * pricing.outputCostPerMillion;
   const totalCost = inputCost + outputCost;
 
   return {
     inputCost,
     outputCost,
+    cachedInputCost: cachedCost,
     totalCost,
     inputCostUsd: inputCost,
     outputCostUsd: outputCost,
+    cachedInputCostUsd: cachedCost,
     totalCostUsd: totalCost,
     inputTokens: safeInput,
     outputTokens: safeOutput,
+    cachedInputTokens: safeCached,
     modelName: pricing.name,
   };
 }

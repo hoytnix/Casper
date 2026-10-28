@@ -115,3 +115,35 @@ test('extractSuggestedRefactors handles in-flight streaming partial delimiters w
   assert.equal(refactors.length, 0);
 });
 
+test('pricing tiers expose cached input rates at 10% of standard', () => {
+  assert.equal(resolveModelPricing('muse-spark-1.3-contributor').cachedInputCostPerMillion, 0.01);
+  assert.equal(resolveModelPricing('muse-spark-1.3').cachedInputCostPerMillion, 0.125);
+  assert.equal(resolveModelPricing('gemini-3.5-flash-lite').cachedInputCostPerMillion, 0.03);
+});
+
+test('calculateModelCost defaults to zero cached tokens (legacy behavior preserved)', () => {
+  const cost = calculateModelCost('muse-spark-1.3', 1000000, 1000000);
+  assert.equal(cost.cachedInputTokens, 0);
+  assert.equal(cost.cachedInputCostUsd, 0);
+  assert.ok(Math.abs(cost.totalCostUsd - 5.5) < 1e-9);
+});
+
+test('calculateModelCost discounts cached input tokens at the cached rate', () => {
+  // 1M contributor input, 400k cached: 600k * $0.10 + 400k * $0.01 = $0.064 input
+  const cost = calculateModelCost('muse-spark-1.3-contributor', 1000000, 1000000, 400000);
+  assert.equal(cost.cachedInputTokens, 400000);
+  assert.ok(Math.abs(cost.cachedInputCostUsd - 0.004) < 1e-9);
+  assert.ok(Math.abs(cost.inputCostUsd - 0.064) < 1e-9);
+  assert.ok(Math.abs(cost.totalCostUsd - 0.264) < 1e-9);
+});
+
+test('calculateModelCost clamps cached tokens to [0, inputTokens]', () => {
+  const over = calculateModelCost('gemini-3.5-flash', 1000000, 0, 1500000);
+  assert.equal(over.cachedInputTokens, 1000000);
+  assert.ok(Math.abs(over.inputCostUsd - 0.15) < 1e-9);
+
+  const negative = calculateModelCost('gemini-3.5-flash', 1000000, 0, -500);
+  assert.equal(negative.cachedInputTokens, 0);
+  assert.ok(Math.abs(negative.inputCostUsd - 1.5) < 1e-9);
+});
+
