@@ -65,6 +65,7 @@ async function* streamMuseCompletionChunks(args: {
   thinkingSummaries?: string;
   searchGrounding?: boolean;
   searchContextSize?: SearchContextSize;
+  signal?: AbortSignal;
 }): AsyncGenerator<{ candidates: { content: { parts: { text: string }[] } }[] }> {
   const normalizedEffort = normalizeThinkingLevel(args.thinkingLevel);
   const normalizedSummaries = normalizeThinkingSummaries(args.thinkingSummaries);
@@ -73,6 +74,11 @@ async function* streamMuseCompletionChunks(args: {
   // fetch itself throws before any byte is parsed.
   const parser = createMuseStreamParser();
   const controller = new AbortController();
+  if (args.signal?.aborted) {
+    controller.abort();
+  } else if (args.signal) {
+    args.signal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
   const timer = setTimeout(() => controller.abort(), args.timeoutMs);
   if (typeof (timer as unknown as { unref?: unknown }).unref === 'function') {
     (timer as unknown as { unref: () => void }).unref();
@@ -166,6 +172,7 @@ export interface EstablishSynthesisInput {
   thinkingLevel: string;
   thinkingSummaries: string;
   geminiThinkingConfig: Record<string, unknown>;
+  signal?: AbortSignal;
 }
 
 export interface EstablishedStream {
@@ -210,6 +217,7 @@ export async function establishSynthesisStream(
     thinkingLevel,
     thinkingSummaries,
     geminiThinkingConfig,
+    signal,
   } = input;
 
   let streamResponse: EstablishedStream['streamResponse'] | null = null;
@@ -219,7 +227,13 @@ export async function establishSynthesisStream(
   const cascadeFailures: CascadeAttemptFailure[] = [];
 
   for (let pass = 1; pass <= 2 && !streamResponse; pass++) {
+    if (signal?.aborted) {
+      break;
+    }
     for (const model of cascadingModels) {
+      if (signal?.aborted) {
+        break;
+      }
       // Muse Spark tags route to the Muse API with key authorization
       // headers; a missing key (or Muse failure) cascades onward.
       if (isMuseModelTag(model)) {
@@ -246,11 +260,13 @@ export async function establishSynthesisStream(
             thinkingSummaries,
             searchGrounding: useSearchGrounding,
             searchContextSize,
+            signal,
           })[Symbol.asyncIterator]();
           const firstResult = await withTimeout(
             museIterator.next(),
             timeoutMs,
-            `Model ${model} first chunk timed out after ${requestTimeout}s`
+            `Model ${model} first chunk timed out after ${requestTimeout}s`,
+            signal
           );
           if (firstResult.done) {
             throw new Error(`Model ${model} returned an empty stream`);
@@ -264,16 +280,23 @@ export async function establishSynthesisStream(
           streamMuseUsage = museUsageCapture;
           break;
         } catch (err) {
+          if (signal?.aborted) {
+            break;
+          }
           console.warn(`[Prompt Stream Cascade] ${model} failed in Pass ${pass}:`, err);
           cascadeFailures.push({ model, pass, error: err });
           continue;
         }
       }
       for (const useThinking of [true, false]) {
+        if (signal?.aborted) {
+          break;
+        }
         try {
           const config: any = {
             systemInstruction: systemInstructionToUse,
             temperature: mode === 'idea' ? 0.4 : 0.2,
+            abortSignal: signal,
           };
           if (useThinking) {
             // Gemini accepts only low/medium/high — Muse-only
@@ -298,14 +321,16 @@ export async function establishSynthesisStream(
               config,
             }),
             timeoutMs,
-            `Model ${model} stream initiation timed out after ${requestTimeout}s`
+            `Model ${model} stream initiation timed out after ${requestTimeout}s`,
+            signal
           );
 
           const iterator = candidateStream[Symbol.asyncIterator]();
           const firstResult = await withTimeout(
             iterator.next(),
             timeoutMs,
-            `Model ${model} first chunk timed out after ${requestTimeout}s`
+            `Model ${model} first chunk timed out after ${requestTimeout}s`,
+            signal
           );
 
           streamResponse = {
@@ -345,6 +370,7 @@ export interface DrainSynthesisInput {
   explorationTrail: ExplorationStep[];
   estimatedInputTokens: number;
   thinkingLevel: string;
+  signal?: AbortSignal;
 }
 
 /**
@@ -466,9 +492,14 @@ export async function drainSynthesisStream(input: DrainSynthesisInput): Promise<
   }
 
   while (true) {
+    if (input.signal?.aborted) break;
     const { done, value } = await streamResponse.iterator.next();
-    if (done) break;
+    if (done || input.signal?.aborted) break;
     processChunkValue(value);
+  }
+
+  if (input.signal?.aborted) {
+    return;
   }
 
   if (thinkingStarted && !thinkingEnded) {

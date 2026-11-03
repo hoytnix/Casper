@@ -34,6 +34,20 @@ import {
 import { runAgenticExploration } from '@/lib/agentic-exploration';
 import { drainSynthesisStream, establishSynthesisStream, isMuseModelTag } from '@/lib/model-cascades';
 
+interface InFlightSubscriber {
+  send: (bytes: Uint8Array) => void;
+  close: () => void;
+  error: (err: unknown) => void;
+}
+
+interface InFlightCompileSession {
+  abortController: AbortController;
+  subscribers: Set<InFlightSubscriber>;
+  replayBuffer: Uint8Array[];
+}
+
+const inFlightCompiles = new Map<string, InFlightCompileSession>();
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -172,11 +186,111 @@ export async function POST(req: NextRequest) {
     // UNIFIED AGENTIC EXPLORATION & STREAMING PIPELINE
     // ==========================================
     if (owner && repo && treeListing) {
+      const dedupeKey = `${owner}/${repo}/${branch}:${mode}:${improvementPrompt.trim()}`;
+
+      // Check if an identical in-flight compile is already running
+      const existingSession = inFlightCompiles.get(dedupeKey);
+      if (existingSession && !existingSession.abortController.signal.aborted) {
+        const readable = new ReadableStream({
+          start(controller) {
+            const subscriber: InFlightSubscriber = {
+              send: (bytes) => {
+                try {
+                  controller.enqueue(bytes);
+                } catch {
+                  // Subscriber closed
+                }
+              },
+              close: () => {
+                try {
+                  controller.close();
+                } catch {}
+              },
+              error: (err) => {
+                try {
+                  controller.error(err);
+                } catch {}
+              },
+            };
+
+            // Replay buffered events already emitted so far
+            for (const chunk of existingSession.replayBuffer) {
+              subscriber.send(chunk);
+            }
+
+            existingSession.subscribers.add(subscriber);
+
+            const onReqAbort = () => {
+              existingSession.subscribers.delete(subscriber);
+              if (existingSession.subscribers.size === 0) {
+                existingSession.abortController.abort();
+                inFlightCompiles.delete(dedupeKey);
+              }
+            };
+
+            req.signal.addEventListener('abort', onReqAbort, { once: true });
+          },
+        });
+
+        return new Response(readable, {
+          headers: {
+            'Content-Type': 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-cache, no-transform',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        });
+      }
+
+      // Start new compilation session
+      const sessionAbortController = new AbortController();
+      const subscribers = new Set<InFlightSubscriber>();
+      const replayBuffer: Uint8Array[] = [];
+
+      const currentSession: InFlightCompileSession = {
+        abortController: sessionAbortController,
+        subscribers,
+        replayBuffer,
+      };
+      inFlightCompiles.set(dedupeKey, currentSession);
+
       const readable = new ReadableStream({
         async start(controller) {
-          const sendRawEvent = (eventData: Record<string, unknown>) => {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(eventData)}\n\n`));
+          const subscriber: InFlightSubscriber = {
+            send: (bytes) => {
+              try {
+                controller.enqueue(bytes);
+              } catch {}
+            },
+            close: () => {
+              try {
+                controller.close();
+              } catch {}
+            },
+            error: (err) => {
+              try {
+                controller.error(err);
+              } catch {}
+            },
           };
+          subscribers.add(subscriber);
+
+          const onReqAbort = () => {
+            subscribers.delete(subscriber);
+            if (subscribers.size === 0) {
+              sessionAbortController.abort();
+              inFlightCompiles.delete(dedupeKey);
+            }
+          };
+          req.signal.addEventListener('abort', onReqAbort, { once: true });
+
+          const sendRawEvent = (eventData: Record<string, unknown>) => {
+            const bytes = encoder.encode(`data: ${JSON.stringify(eventData)}\n\n`);
+            replayBuffer.push(bytes);
+            for (const sub of subscribers) {
+              sub.send(bytes);
+            }
+          };
+
           // compileId rides on every event (present and future) so the
           // client can ignore stale streams from superseded compiles.
           const sendEvent = (eventData: Record<string, unknown>) => {
@@ -184,6 +298,10 @@ export async function POST(req: NextRequest) {
           };
 
           try {
+            if (sessionAbortController.signal.aborted) {
+              return;
+            }
+
             sendEvent({
               type: 'agent_start',
               message: `Initializing agentic exploration loop (Mode: ${mode})...`,
@@ -209,7 +327,12 @@ export async function POST(req: NextRequest) {
               githubPat,
               fetchFilesOnDemand,
               normalizeRepoPath,
+              signal: sessionAbortController.signal,
             });
+
+            if (sessionAbortController.signal.aborted) {
+              return;
+            }
 
             // ==========================================
             // PHASE 2: SYNTHESIZE & STREAM PROMPT
@@ -315,7 +438,12 @@ export async function POST(req: NextRequest) {
               thinkingLevel,
               thinkingSummaries,
               geminiThinkingConfig,
+              signal: sessionAbortController.signal,
             });
+
+            if (sessionAbortController.signal.aborted) {
+              return;
+            }
 
             if (!established.stream) {
               sendEvent({
@@ -323,7 +451,6 @@ export async function POST(req: NextRequest) {
                 error: 'All cascading models failed to stream the response after 2 passes.',
                 details: summarizeCascadeFailures(established.cascadeFailures),
               });
-              controller.close();
               return;
             }
 
@@ -333,7 +460,6 @@ export async function POST(req: NextRequest) {
               streamPass,
               streamMuseUsage,
             } = established.stream;
-            const { cascadeFailures } = established;
 
             await drainSynthesisStream({
               streamResponse,
@@ -346,16 +472,21 @@ export async function POST(req: NextRequest) {
               explorationTrail,
               estimatedInputTokens,
               thinkingLevel,
+              signal: sessionAbortController.signal,
             });
-
-            controller.close();
           } catch (err: unknown) {
-            console.error('Error in agentic stream:', err);
-            sendEvent({
-              type: 'error',
-              error: err instanceof Error ? err.message : String(err),
-            });
-            controller.close();
+            if (!sessionAbortController.signal.aborted) {
+              console.error('Error in agentic stream:', err);
+              sendEvent({
+                type: 'error',
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          } finally {
+            inFlightCompiles.delete(dedupeKey);
+            for (const sub of subscribers) {
+              sub.close();
+            }
           }
         },
       });

@@ -408,8 +408,16 @@ export async function fetchSingleFileContent(
   repo: string,
   branch: string,
   filePath: string,
-  pat?: string
+  pat?: string,
+  signal?: AbortSignal
 ): Promise<SourceFile> {
+  if (signal?.aborted) {
+    return {
+      path: normalizeRepoPath(filePath),
+      content: '// [Fetch aborted by client]',
+      size: 0,
+    };
+  }
   const cleanPath = normalizeRepoPath(filePath);
   const encodedPath = cleanPath
     .split('/')
@@ -419,7 +427,7 @@ export async function fetchSingleFileContent(
   try {
     if (!pat || !pat.trim()) {
       const url = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${encodedPath}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal });
       if (!res.ok) {
         return {
           path: cleanPath,
@@ -440,6 +448,7 @@ export async function fetchSingleFileContent(
           Accept: 'application/vnd.github.v3.raw',
           Authorization: `Bearer ${pat.trim()}`,
         },
+        signal,
       });
       if (!res.ok) {
         return {
@@ -469,11 +478,15 @@ export async function fetchFilesOnDemand(
   repo: string,
   branch: string,
   filePaths: string[],
-  pat?: string
+  pat?: string,
+  signal?: AbortSignal
 ): Promise<SourceFile[]> {
+  if (signal?.aborted) {
+    return [];
+  }
   const uniquePaths = Array.from(new Set(filePaths.map((p) => p.replace(/^\.?\//, ''))));
   const results = await Promise.all(
-    uniquePaths.map((p) => fetchSingleFileContent(owner, repo, branch, p, pat))
+    uniquePaths.map((p) => fetchSingleFileContent(owner, repo, branch, p, pat, signal))
   );
   return results;
 }

@@ -100,6 +100,14 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
   const activeCompileIdRef = useRef<string | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const assistantIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      readerRef.current?.cancel().catch(() => {});
+    };
+  }, []);
 
   // Single-owner handoff: abort any in-flight stream synchronously, then
   // take ownership. Ref-based (never closure state) so rapid double
@@ -107,6 +115,7 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
   const claimOwnership = useCallback(async () => {
     const { setMessages } = callbacksRef.current;
     if (activeCompileIdRef.current !== null) {
+      abortControllerRef.current?.abort();
       try {
         await readerRef.current?.cancel();
       } catch {
@@ -121,6 +130,7 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
       activeCompileIdRef.current = null;
       readerRef.current = null;
       assistantIdRef.current = null;
+      abortControllerRef.current = null;
     }
     const compileId =
       typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -135,6 +145,8 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
   }, []);
 
   const release = useCallback(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     activeCompileIdRef.current = null;
     readerRef.current = null;
     assistantIdRef.current = null;
@@ -165,10 +177,15 @@ export function useCompileStream(callbacks: UseCompileStreamCallbacks) {
 
     assistantIdRef.current = assistantMsgId;
 
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     const response = await fetch('/api/compile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
+      signal: abortController.signal,
     });
 
     // Guard against reverse proxy warmup/timeout HTML pages

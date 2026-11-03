@@ -19,7 +19,8 @@ export interface ExplorationGateway {
     repo: string,
     branch: string,
     paths: string[],
-    githubPat?: string
+    githubPat?: string,
+    signal?: AbortSignal
   ) => Promise<SourceFile[]>;
   normalizeRepoPath: (p: string) => string;
 }
@@ -35,6 +36,7 @@ export interface AgenticExplorationInput extends ExplorationGateway {
   maxRounds: number;
   timeoutMs: number;
   requestTimeout: number;
+  signal?: AbortSignal;
 }
 
 export interface AgenticExplorationResult {
@@ -45,15 +47,33 @@ export interface AgenticExplorationResult {
 // Per-call timeout guard for streaming model work. Kept identical to the
 // route original: rejects with the timeout message (string, not Error) and
 // unrefs the timer so idle handles never pin the Node process open.
-export function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  timeoutMessage: string,
+  signal?: AbortSignal
+): Promise<T> {
+  if (signal?.aborted) {
+    return Promise.reject(new Error('Operation aborted'));
+  }
   let timer: ReturnType<typeof setTimeout>;
+  let abortHandler: (() => void) | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(timeoutMessage), ms);
     if (typeof (timer as unknown as { unref?: () => void }).unref === 'function') {
       (timer as unknown as { unref: () => void }).unref();
     }
+    if (signal) {
+      abortHandler = () => reject(new Error('Operation aborted'));
+      signal.addEventListener('abort', abortHandler, { once: true });
+    }
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timer);
+    if (signal && abortHandler) {
+      signal.removeEventListener('abort', abortHandler);
+    }
+  });
 }
 
 function isMuseModelTagLocal(model: string): boolean {
@@ -80,6 +100,7 @@ export async function runAgenticExploration(
     githubPat,
     fetchFilesOnDemand,
     normalizeRepoPath,
+    signal,
   } = input;
 
   const exploredFilesMap = new Map<string, SourceFile>();
@@ -129,6 +150,10 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
   const explorationModels = cascadingModels.filter((m) => !isMuseModelTagLocal(m));
 
   for (let round = 1; round <= maxRounds; round++) {
+    if (signal?.aborted) {
+      throw new Error('Exploration aborted by client');
+    }
+
     sendEvent({
       type: 'agent_round',
       round,
@@ -139,7 +164,13 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
     let exploreResult: unknown = null;
 
     for (let pass = 1; pass <= 2; pass++) {
+      if (signal?.aborted) {
+        throw new Error('Exploration aborted by client');
+      }
       for (const model of explorationModels) {
+        if (signal?.aborted) {
+          throw new Error('Exploration aborted by client');
+        }
         try {
           const response = await withTimeout(
             ai.models.generateContent({
@@ -150,14 +181,19 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
                   'You are a Principal Architectural Cartographer investigating a Next.js or Hono codebase. Use the inspect_files tool to examine source code files before producing architectural prompts. Inspect App Router pages, layouts, and route handlers in Next.js repos; inspect Hono routers (app.ts, src/index.ts, routes/), middleware (app.use), RPC bindings, and Zod validators in Hono repos.',
                 tools: [{ functionDeclarations: [inspectFilesToolDeclaration] }],
                 temperature: 0.1,
+                abortSignal: signal,
               },
             }),
             timeoutMs,
-            `Model ${model} exploration timed out after ${requestTimeout}s`
+            `Model ${model} exploration timed out after ${requestTimeout}s`,
+            signal
           );
           exploreResult = response;
           break;
         } catch (err) {
+          if (signal?.aborted) {
+            throw new Error('Exploration aborted by client');
+          }
           console.warn(`[Agentic Cascade] Round ${round} Model ${model} failed in Pass ${pass}:`, err);
         }
       }
@@ -187,6 +223,10 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
         break;
       }
 
+      if (signal?.aborted) {
+        throw new Error('Exploration aborted by client');
+      }
+
       sendEvent({
         type: 'agent_inspect',
         round,
@@ -199,7 +239,8 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
         repo,
         branch,
         newPathsToFetch,
-        githubPat
+        githubPat,
+        signal
       );
 
       for (const file of downloaded) {
@@ -257,7 +298,7 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
   }
 
   // Fallback if still empty: grab up to 25 core files from tree
-  if (exploredFilesMap.size === 0) {
+  if (exploredFilesMap.size === 0 && !signal?.aborted) {
     const fallbackPaths = treeListing
       .split('\n')
       .map((l: string) => l.replace(/^@\[\//, '').replace(/\]$/, '').trim())
@@ -270,7 +311,8 @@ INSTRUCTIONS FOR MULTI-ROUND EXPLORATION (Up to ${maxRounds} rounds):
         repo,
         branch,
         fallbackPaths,
-        githubPat
+        githubPat,
+        signal
       );
       for (const f of fallbackDownloaded) {
         exploredFilesMap.set(f.path, f);
