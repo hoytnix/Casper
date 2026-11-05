@@ -68,7 +68,12 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${plusJakartaSans.variable} ${jetbrainsMono.variable} bg-[var(--theme-bg)] text-[var(--theme-text)] min-h-screen antialiased selection:bg-indigo-500/30 selection:text-indigo-200 font-sans`}
       >
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {children}
+          <footer className="w-full py-4 text-center text-xs text-slate-500 border-t border-white/5">
+            Copyright (C) 2026 <a href="https://isicecakeoisis.com" target="_blank" rel="noopener">ISICECAKEOISIS</a>. A <a href="https://tehwiz.com" target="_blank" rel="noopener">TehWiz Production</a>.
+          </footer>
+        </ThemeProvider>
       </body>
     </html>
   );
